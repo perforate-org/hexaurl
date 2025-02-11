@@ -5,23 +5,27 @@ pub enum Error {
 
     /// The input string length is too long
     #[error("String is too long: maximum length is {0} characters")]
-    StringTooLong(u8),
+    StringTooLong(usize),
 
     /// The input string length is too short
     #[error("String is too short: minimum length is {0} characters")]
-    StringTooShort(u8),
+    StringTooShort(usize),
 
     /// The input bytes length is too long
     #[error("Bytes exceed maximum length: {0} bytes")]
-    BytesTooLong(u8),
+    BytesTooLong(usize),
 
     /// The input bytes length is too short
     #[error("Bytes below minimum length: {0} bytes")]
-    BytesTooShort(u8),
+    BytesTooShort(usize),
 
     /// The input includes characters invalid for this type of HexaURL encoding
     #[error("Invalid character in this type of HexaURL")]
     InvalidCharacter,
+
+    /// The input length is invalid for this type of HexaURL encoding
+    #[error("Invalid length for this type of HexaURL")]
+    InvalidLength,
 
     // Errors limited by configuration
 

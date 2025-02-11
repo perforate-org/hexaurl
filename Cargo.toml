@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/hexaurl", "crates/hexaurl-config", "crates/hexaurl-validate"]
+members = ["crates/hexaurl", "crates/hexaurl-config", "crates/hexaurl-validate", "crates/hexaurl/benches/canbench"]
 resolver = "2"
 
 [workspace.dependencies]

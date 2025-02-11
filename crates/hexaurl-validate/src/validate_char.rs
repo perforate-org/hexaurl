@@ -3,36 +3,56 @@ use crate::Error;
 /// Validate that the given ASCII code is alphanumeric, hyphen or underscore.
 #[inline(always)]
 pub const fn validate_alphanumeric_with_hyphen_or_underscore(code: u8) -> Result<(), Error> {
-    match code {
-        45 | 48..=57 | 65..=90 | 95 | 97..=122 => Ok(()),
-        _ => Err(Error::InvalidCharacter),
+    if (code >= b'0' && code <= b'9')
+        || (code >= b'A' && code <= b'Z')
+        || (code >= b'a' && code <= b'z')
+        || code == b'-'
+        || code == b'_'
+    {
+        Ok(())
+    } else {
+        Err(Error::InvalidCharacter)
     }
 }
 
 /// Validate that the given ASCII code is alphanumeric or underscore.
 #[inline(always)]
 pub const fn validate_alphanumeric_with_underscore(code: u8) -> Result<(), Error> {
-    match code {
-        48..=57 | 65..=90 | 95 | 97..=122 => Ok(()),
-        _ => Err(Error::InvalidCharacter),
+    if (code >= b'0' && code <= b'9')
+        || (code >= b'A' && code <= b'Z')
+        || (code >= b'a' && code <= b'z')
+        || code == b'_'
+    {
+        Ok(())
+    } else {
+        Err(Error::InvalidCharacter)
     }
 }
 
 /// Validate that the given ASCII code is alphanumeric or hyphen.
 #[inline(always)]
 pub const fn validate_alphanumeric_with_hyphen(code: u8) -> Result<(), Error> {
-    match code {
-        45 | 48..=57 | 65..=90 | 97..=122 => Ok(()),
-        _ => Err(Error::InvalidCharacter),
+    if (code >= b'0' && code <= b'9')
+        || (code >= b'A' && code <= b'Z')
+        || (code >= b'a' && code <= b'z')
+        || code == b'-'
+    {
+        Ok(())
+    } else {
+        Err(Error::InvalidCharacter)
     }
 }
 
 /// Validate that the given ASCII code is alphanumeric.
 #[inline(always)]
 pub const fn validate_alphanumeric(code: u8) -> Result<(), Error> {
-    match code {
-        48..=57 | 65..=90 | 97..=122 => Ok(()),
-        _ => Err(Error::InvalidCharacter),
+    if (code >= b'0' && code <= b'9')
+        || (code >= b'A' && code <= b'Z')
+        || (code >= b'a' && code <= b'z')
+    {
+        Ok(())
+    } else {
+        Err(Error::InvalidCharacter)
     }
 }
 

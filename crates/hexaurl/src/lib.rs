@@ -1,11 +1,13 @@
 #![doc = include_str!("../README.md")]
 
 pub use hexaurl_validate::Error;
+pub use hexaurl_config as config;
+pub use hexaurl_validate as validate;
 
 pub mod encode;
 pub mod decode;
 #[cfg(feature = "with-struct")]
-mod struct_api;
+pub mod struct_api;
 
 pub use encode::{encode, encode_unchecked};
 pub use decode::{decode, decode_unchecked};
