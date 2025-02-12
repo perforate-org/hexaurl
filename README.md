@@ -1,5 +1,7 @@
 # HexaURL
 
+![HexaURL logo](https://github.com/perforate-org/hexaurl/blob/main/assets/logo.png?raw=true)
+
 HexaURL is an Rust library that implements a lightweight text format using six-bit character encoding. Designed for case-insensitive URLs and identifiers, it ensures efficient encoding and decoding coupled with robust validation. Optimized for performance-critical environments, HexaURL excels as a high-performance utility for map keys.
 
 ## Features
