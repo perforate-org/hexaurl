@@ -22,18 +22,15 @@ cargo add hexaurl
 ## Quick Start
 
 ```rust
-use hexaurl::{encode, decode};
+use hexaurl::HexaUrl;
 
 fn main() -> Result<(), hexaurl::Error> {
-    let input = "HELLO-WORLD";
+    let input = "hello-world";
 
     // Encode the string to HexaURL format
-    let encoded = encode(input, None)?;
+    let encoded = HexaUrl::new(input)?;
 
-    // Decode back to the original string
-    let decoded = decode(&encoded, None)?;
-
-    assert_eq!(decoded, input);
+    assert_eq!(encoded.to_string(), input);
     Ok(())
 }
 ```
