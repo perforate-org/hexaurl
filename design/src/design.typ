@@ -21,10 +21,6 @@
 - Ensure that the encoding is compatible with search algorithms and more efficient than standard ASCII.
 - Provide negligibly efficient methods for converting between HexaURL and ASCII.
 
-== Non-Goals
-
--
-
 = Context
 
 Although UTF-8 strings are ubiquitous in modern software and networks, practical URI safety mandates the use of only ASCII alphanumeric characters, hyphens, and underscores. Since many systems handle strings in a case-insensitive manner, it is beneficial to employ identifiers that ignore letter casing. In practical terms, if percent encoding is not applied, the necessary character set consists of 38 characters—26 letters (A–Z), 10 digits (0–9), and 2 delimitation marks (hyphen and underscore). Given that $ 5 < log_2 38 <= 6 $, each character can be efficiently encoded using 6 bits.

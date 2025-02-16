@@ -2,7 +2,6 @@
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq)]
 pub enum Error {
     // Common errors
-
     /// The input string length is too long
     #[error("String is too long: maximum length is {0} characters")]
     StringTooLong(usize),
@@ -23,12 +22,19 @@ pub enum Error {
     #[error("Invalid character in this type of HexaURL")]
     InvalidCharacter,
 
+    /// The input includes bytes invalid for this type of HexaURL encoding
+    #[error("Invalid byte in this type of HexaURL")]
+    InvalidByte,
+
     /// The input length is invalid for this type of HexaURL encoding
     #[error("Invalid length for this type of HexaURL")]
     InvalidLength,
 
-    // Errors limited by configuration
+    /// The input configuration is invalid
+    #[error("Maximum length {0} cannot be less than minimum length {1}")]
+    InvalidConfig(usize, usize),
 
+    // Errors limited by configuration
     /// The input includes hyphens at the start or end (not allowed by configuration)
     #[error("Hyphens cannot start or end this type of HexaURL")]
     LeadingTrailingHyphen,

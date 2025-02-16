@@ -20,13 +20,13 @@ mod benches {
     use test::{Bencher, black_box};
 
     use hexaurl::{
-        encode::{encode, encode_minimal_checked, encode_unchecked},
-        decode::{decode, decode_unchecked},
-        HexaUrl
+        HexaUrl,
+        decode::{decode, decode_quick_checked, decode_unchecked},
+        encode::{encode, encode_quick_checked, encode_unchecked},
     };
     use hexaurl_validate::validate;
     use once_cell::sync::Lazy;
-    use std::collections::{HashMap, BTreeMap};
+    use std::collections::{BTreeMap, HashMap};
 
     const SHORT_INPUT: &str = "hero";
     const MEDIUM_INPUT: &str = "fancy-champ";
@@ -40,15 +40,14 @@ mod benches {
     });
 
     fn prepare_hexaurl_keys() -> Vec<HexaUrl> {
-        MAP_KEYS.iter()
-            .map(|k| HexaUrl::new_unchecked(k))
+        MAP_KEYS
+            .iter()
+            .map(|k| unsafe { HexaUrl::new_unchecked(k) })
             .collect()
     }
 
     fn prepare_string_keys() -> Vec<String> {
-        MAP_KEYS.iter()
-            .map(|k| k.to_string())
-            .collect()
+        MAP_KEYS.iter().map(|k| k.to_string()).collect()
     }
 
     // HashMap benchmarks
@@ -134,7 +133,7 @@ mod benches {
     }
 
     #[bench]
-    fn hashmap_get_hexaurl_with_encode_minimal_checked(b: &mut Bencher) {
+    fn hashmap_get_hexaurl_with_encode_quick_checked(b: &mut Bencher) {
         let keys = prepare_hexaurl_keys();
         let mut map = HashMap::new();
         for (i, key) in keys.iter().enumerate() {
@@ -143,7 +142,7 @@ mod benches {
         let keys = prepare_string_keys();
         b.iter(|| {
             for key in keys.iter() {
-                let encoded = HexaUrl::new_minimal_checked(black_box(key)).unwrap();
+                let encoded = HexaUrl::new_quick_checked(black_box(key)).unwrap();
                 black_box(map.get(black_box(&encoded))).unwrap();
             }
         });
@@ -232,7 +231,7 @@ mod benches {
     }
 
     #[bench]
-    fn btreemap_get_hexaurl_with_encode_minimal_checked(b: &mut Bencher) {
+    fn btreemap_get_hexaurl_with_encode_quick_checked(b: &mut Bencher) {
         let keys = prepare_hexaurl_keys();
         let mut map = BTreeMap::new();
         for (i, key) in keys.iter().enumerate() {
@@ -241,7 +240,7 @@ mod benches {
         let keys = prepare_string_keys();
         b.iter(|| {
             for key in keys.iter() {
-                let encoded = HexaUrl::new_minimal_checked(black_box(key)).unwrap();
+                let encoded = HexaUrl::new_quick_checked(black_box(key)).unwrap();
                 black_box(map.get(black_box(&encoded))).unwrap();
             }
         });
@@ -281,17 +280,17 @@ mod benches {
 
     #[bench]
     fn encode_unchecked_short(b: &mut Bencher) {
-        b.iter(|| black_box(encode_unchecked::<16>(black_box(SHORT_INPUT))));
+        b.iter(|| black_box(unsafe { encode_unchecked::<16>(black_box(SHORT_INPUT)) }));
     }
 
     #[bench]
     fn encode_unchecked_medium(b: &mut Bencher) {
-        b.iter(|| black_box(encode_unchecked::<16>(black_box(MEDIUM_INPUT))));
+        b.iter(|| black_box(unsafe { encode_unchecked::<16>(black_box(MEDIUM_INPUT)) }));
     }
 
     #[bench]
     fn encode_unchecked_long(b: &mut Bencher) {
-        b.iter(|| black_box(encode_unchecked::<16>(black_box(LONG_INPUT))));
+        b.iter(|| black_box(unsafe { encode_unchecked::<16>(black_box(LONG_INPUT)) }));
     }
 
     // Decoding benchmarks
@@ -333,17 +332,35 @@ mod benches {
 
     // Encoding safety benchmarks
     #[bench]
-    fn encode_minimal_checked_short(b: &mut Bencher) {
-        b.iter(|| black_box(encode_minimal_checked::<16>(black_box(SHORT_INPUT))));
+    fn encode_quick_checked_short(b: &mut Bencher) {
+        b.iter(|| black_box(encode_quick_checked::<16>(black_box(SHORT_INPUT))));
     }
 
     #[bench]
-    fn encode_minimal_checked_medium(b: &mut Bencher) {
-        b.iter(|| black_box(encode_minimal_checked::<16>(black_box(MEDIUM_INPUT))));
+    fn encode_quick_checked_medium(b: &mut Bencher) {
+        b.iter(|| black_box(encode_quick_checked::<16>(black_box(MEDIUM_INPUT))));
     }
 
     #[bench]
-    fn encode_minimal_checked_long(b: &mut Bencher) {
-        b.iter(|| black_box(encode_minimal_checked::<16>(black_box(LONG_INPUT))));
+    fn encode_quick_checked_long(b: &mut Bencher) {
+        b.iter(|| black_box(encode_quick_checked::<16>(black_box(LONG_INPUT))));
+    }
+
+    #[bench]
+    fn decode_quick_checked_short(b: &mut Bencher) {
+        let encoded = encode::<16>(SHORT_INPUT).unwrap();
+        b.iter(|| black_box(decode_quick_checked::<16, 21>(&encoded)));
+    }
+
+    #[bench]
+    fn decode_quick_checked_medium(b: &mut Bencher) {
+        let encoded = encode::<16>(MEDIUM_INPUT).unwrap();
+        b.iter(|| black_box(decode_quick_checked::<16, 21>(&encoded)));
+    }
+
+    #[bench]
+    fn decode_quick_checked_long(b: &mut Bencher) {
+        let encoded = encode::<16>(LONG_INPUT).unwrap();
+        b.iter(|| black_box(decode_quick_checked::<16, 21>(&encoded)));
     }
 }

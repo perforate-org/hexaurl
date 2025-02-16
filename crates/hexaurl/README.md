@@ -45,7 +45,7 @@ let safe_key = HexaUrl::new(input)
 map.insert(safe_key, 42);
 
 // Retrieve the value using the unchecked constructor when the input is known to be safe.
-let retrieved = if let Some(key) = HexaUrl::new_minimal_checked(input) {
+let retrieved = if let Ok(key) = HexaUrl::new_quick_checked(input) {
     map.get(&key)
 } else {
     None
@@ -86,4 +86,4 @@ Conversely, the unsafe APIs (`encode_unchecked` and `decode_unchecked`):
 - Can lead to undefined behavior if used with invalid data.
 - Deliver peak performance when used correctly.
 
-For a complete guide, please refer to [the root README.md](../../README.md).
+For a complete guide, please refer to [the root README.md](https://github.com/perforate-org/hexaurl#readme).

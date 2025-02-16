@@ -16,7 +16,7 @@ This crate provides:
 ```rust
 use hexaurl_config::{
     Config,
-    IdentifierComposition,
+    Composition,
     DelimiterRules,
 };
 
@@ -24,7 +24,7 @@ use hexaurl_config::{
 let config = Config::builder()
     .min_length(Some(5))
     .max_length(Some(20))
-    .identifier(IdentifierComposition::AlphanumericHyphen)
+    .composition(Composition::AlphanumericHyphen)
     .delimiter(Some(
         DelimiterRules::builder()
             .allow_consecutive_hyphens(false)
@@ -47,13 +47,13 @@ Controls the overall validation behavior:
 ```rust
 use hexaurl_config::{
     Config,
-    IdentifierComposition,
+    Composition,
 };
 
 let config = Config::builder()
     .min_length(Some(5))
     .max_length(Some(20))
-    .identifier(IdentifierComposition::Alphanumeric)
+    .composition(Composition::Alphanumeric)
     .build();
 ```
 
@@ -87,10 +87,10 @@ let delimiter_config = DelimiterRules::builder()
 The default configuration:
 
 - No minimum length
-- Maximum length of 21 characters
+- Maximum length of the encoded HexaURL string representation
 - Alphanumeric with hyphens and underscores
 - No consecutive delimiters
 - No leading/trailing delimiters
 - No adjacent different delimiters
 
-See the root README.md for complete documentation.
+See [the root README.md](https://github.com/perforate-org/hexaurl#readme) for complete documentation.

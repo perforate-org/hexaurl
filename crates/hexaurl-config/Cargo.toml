@@ -2,9 +2,9 @@
 name = "hexaurl-config"
 version = "0.0.1"
 authors = ["Inomoto, Yota <yota@perforate.org>"]
-edition = "2021"
+edition = "2018"
 license = "MIT OR Apache-2.0"
-rust-version = "1.78.0"
+rust-version = "1.31.0"
 
 description = "HexaURL encoding format, suitable for user IDs and URL-safe strings."
 include = [
@@ -16,9 +16,9 @@ include = [
 ]
 
 documentation = "https://docs.rs/hexaurl-config/"
-repository = "https://github.com/wiyota/hexaurl/"
+repository = "https://github.com/perforate-org/hexaurl/"
 
 readme = "README.md"
 
-categories = ["encoding", "text-processing"]
-keywords = ["sixbit", "dec", "encoding", "text", "url", "serialization"]
+categories = ["compression", "encoding"]
+keywords = ["database", "text", "string"]

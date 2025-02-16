@@ -1,12 +1,12 @@
-//! Functions for decoding HexaURL-encoded bytes back into strings.
+//! Decoding Utilities
 //!
 //! This module provides both checked and unchecked decoding functions. The safe functions perform validation
 //! to ensure all HexaURL values are within the valid range, while the unchecked functions assume the input
 //! is already valid for increased performance.
 
-use crate::{ASCII_OFFSET, MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS, SHIFT_FOUR_BITS, SHIFT_SIX_BITS, SHIFT_TWO_BITS};
 use crate::Error;
-use hexaurl_validate::{validate_with_config, config::Config};
+use crate::{MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS};
+use hexaurl_validate::{config::Config, validate_with_config};
 use std::slice;
 
 /// This function converts a slice of HexaURL-encoded bytes into the original string based on the provided length.
@@ -26,15 +26,58 @@ use std::slice;
 /// ```
 #[inline]
 pub fn decode<const N: usize, const S: usize>(bytes: &[u8; N]) -> Result<String, Error> {
-    let cfg = Config::default();
-    decode_with_config::<N, S>(bytes, cfg)
+    decode_with_config::<N, S>(bytes, Config::default())
 }
 
 #[inline]
-pub fn decode_with_config<const N: usize, const S: usize>(bytes: &[u8; N], config: Config) -> Result<String, Error> {
+/// Decodes a slice of HexaURL-encoded bytes into a string using a custom validation configuration.
+///
+/// # Parameters
+/// - `bytes`: A reference to an array of bytes containing HexaURL-encoded data.
+/// - `config`: A custom configuration for validating the decoded string.
+///
+/// # Returns
+/// A `Result` containing the decoded string if validation succeeds, or an `Error` otherwise.
+///
+/// # Errors
+/// Returns an `Error` if the decoded string fails to validate according to the provided configuration.
+pub fn decode_with_config<const N: usize, const S: usize>(
+    bytes: &[u8; N],
+    config: Config,
+) -> Result<String, Error> {
     let res = decode_unchecked::<N, S>(bytes);
     validate_with_config::<N>(&res, config)?;
     Ok(res)
+}
+
+#[inline(always)]
+/// Decodes a slice of HexaURL-encoded bytes into a string using quick validation checks.
+///
+/// This function performs a fast decode of the encoded data, leveraging the core decoding routine,
+/// then checks for any null bytes in the result. Null bytes indicate an error in the encoding,
+/// in which case an error is returned. If no null bytes are found, the decoded slice is converted
+/// into a `String` without further validation.
+///
+/// # Parameters
+/// - `bytes`: A reference to an array of bytes containing HexaURL-encoded data.
+///
+/// # Returns
+/// A `Result` containing the decoded string if successful, or an `Error` if a null byte is detected.
+///
+/// # Safety
+/// The caller must ensure that the input is valid and does not contain null bytes that would cause
+/// an invalid UTF-8 conversion.
+pub fn decode_quick_checked<const N: usize, const S: usize>(
+    bytes: &[u8; N],
+) -> Result<String, Error> {
+    let mut res: [u8; S] = [0; S];
+    let slice = decode_core::<N, S>(bytes, &mut res);
+    if slice.contains(&0) {
+        Err(Error::InvalidByte)
+    } else {
+        // SAFETY: The function assumes the input is valid and does not contain any null bytes.
+        Ok(unsafe { std::str::from_utf8_unchecked(slice) }.to_owned())
+    }
 }
 
 /// This function performs decoding without validating whether the HexaURL values are within the
@@ -64,9 +107,18 @@ pub fn decode_with_config<const N: usize, const S: usize>(bytes: &[u8; N], confi
 pub fn decode_unchecked<const N: usize, const S: usize>(bytes: &[u8; N]) -> String {
     let mut res: [u8; S] = [0; S];
     let slice = decode_core::<N, S>(bytes, &mut res);
-    // SAFETY: The function assumes the input is valid and does not contain any null bytes or spaces.
+    // SAFETY: The function assumes the input is valid and does not contain any null bytes.
     unsafe { std::str::from_utf8_unchecked(slice) }.to_owned()
 }
+
+/// Index-based lookup table mapping encoded 6-bit values to their corresponding ASCII byte values.
+/// Invalid indices are set to 0 (null character).
+const LOOKUP_TABLE: [u8; 64] = [
+      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  45,   0,   0,
+     48,  49,  50,  51,  52,  53,  54,  55,  56,  57,   0,   0,   0,   0,   0,   0,
+      0,  97,  98,  99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111,
+    112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122,   0,   0,   0,   0,  95,
+];
 
 /// Converts a HexaURL alphabet character to its lowercase ASCII representation using bitwise operations.
 ///
@@ -75,14 +127,9 @@ pub fn decode_unchecked<const N: usize, const S: usize>(bytes: &[u8; N]) -> Stri
 ///
 /// # Note
 /// This function assumes the input is a valid HexaURL character.
-#[inline(always)]
-const fn convert_hexaurl_char_to_lowercase(byte: u8) -> u8 {
-    #[allow(clippy::manual_range_contains)]
-    if byte >= 33 && byte <= 58 {
-        byte + 64
-    } else {
-        byte + ASCII_OFFSET
-    }
+#[inline]
+const unsafe fn convert(byte: u8) -> u8 {
+    unsafe { LOOKUP_TABLE.as_ptr().add(byte as usize).read() }
 }
 
 /// Calculates the number of full 3-byte chunks in the input.
@@ -116,30 +163,41 @@ const fn remaining_chars_ptr_offset(n: usize) -> usize {
 /// that do not form a complete chunk. The decoding leverages unsafe pointer arithmetic for performance.
 /// Any trailing null bytes or spaces in the resulting byte array are trimmed before converting to a UTF-8 string.
 #[inline(always)]
-pub(crate) fn decode_core<'a, const N: usize, const S: usize>(src: &[u8; N], dst: &'a mut [u8; S]) -> &'a [u8] {
+pub(crate) fn decode_core<'a, const N: usize, const S: usize>(
+    src: &[u8; N],
+    dst: &'a mut [u8; S],
+) -> &'a [u8] {
     // The output size is 4/3 times the input size.
     assert_eq!(N * 4 / 3, S, "Output size mismatch");
 
-    // SAFETY: Pointer operations on fixed-length byte strings are safe.
-    unsafe {
-        'outer: {
-            // Process full 3-byte chunks first.
-            for chunk_idx in 0..full_chunks(N) {
-                // Compute pointers for the current chunk to avoid bounds checks.
-                let src = slice::from_raw_parts(src.as_ptr().add(chunk_idx * 3), 3);
-                let dst = slice::from_raw_parts_mut(dst.as_mut_ptr().add(chunk_idx * 4), 4);
-                // If the chunk is empty, break the loop.
-                if decode_chunk_sixbit(src, dst).is_err() {
-                    break 'outer;
-                }
+    'outer: {
+        // Process full 3-byte chunks first.
+        for chunk_idx in 0..full_chunks(N) {
+            // Compute pointers for the current chunk to avoid bounds checks.
+            let src_chunk = unsafe { slice::from_raw_parts(src.as_ptr().add(chunk_idx * 3), 3) };
+            let dst_chunk =
+                unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr().add(chunk_idx * 4), 4) };
+            // If the chunk is empty, break the decoding.
+            if decode_chunk_sixbit(src_chunk, dst_chunk).is_err() {
+                break 'outer;
             }
-            // Process any remaining bytes that don't make up a complete 3-byte chunk.
-            decode_remaining_sixbit(
-                slice::from_raw_parts(src.as_ptr().add(remaining_ptr_offset(N)), remaining_bytes(N)),
-                slice::from_raw_parts_mut(dst.as_mut_ptr().add(remaining_chars_ptr_offset(N)), remaining_bytes(N)), // len is same as remaining_bytes(N)
-                remaining_bytes(N),
-            );
         }
+        // Process any remaining bytes that don't make up a complete 3-byte chunk.
+        decode_remaining_sixbit(
+            unsafe {
+                slice::from_raw_parts(
+                    src.as_ptr().add(remaining_ptr_offset(N)),
+                    remaining_bytes(N),
+                )
+            },
+            unsafe {
+                slice::from_raw_parts_mut(
+                    dst.as_mut_ptr().add(remaining_chars_ptr_offset(N)),
+                    remaining_bytes(N), // len is same as remaining_bytes(N)
+                )
+            },
+            remaining_bytes(N),
+        );
     }
 
     // Trim any trailing null bytes or spaces from the result.
@@ -175,10 +233,10 @@ const fn decode_chunk_sixbit(src: &[u8], dst: &mut [u8]) -> Result<(), ()> {
         }
         let r = dst.as_mut_ptr();
 
-        *r = convert_hexaurl_char_to_lowercase((*s) >> SHIFT_TWO_BITS);
-        *r.add(1) = convert_hexaurl_char_to_lowercase(((*s & MASK_TWO_BITS) << SHIFT_FOUR_BITS) | (*s.add(1) >> SHIFT_FOUR_BITS));
-        *r.add(2) = convert_hexaurl_char_to_lowercase(((*s.add(1) & MASK_FOUR_BITS) << SHIFT_TWO_BITS) | (*s.add(2) >> SHIFT_SIX_BITS));
-        *r.add(3) = convert_hexaurl_char_to_lowercase(*s.add(2) & MASK_SIX_BITS);
+        *r = convert((*s) >> 2);
+        *r.add(1) = convert(((*s & MASK_TWO_BITS) << 4) | (*s.add(1) >> 4));
+        *r.add(2) = convert(((*s.add(1) & MASK_FOUR_BITS) << 2) | (*s.add(2) >> 6));
+        *r.add(3) = convert(*s.add(2) & MASK_SIX_BITS);
     }
     Ok(())
 }
@@ -205,14 +263,14 @@ const fn decode_remaining_sixbit(src: &[u8], dst: &mut [u8], remaining_bytes: us
         match remaining_bytes {
             1 => {
                 // If there is 1 remaining byte, decode it by shifting right by 2 bits and converting to lowercase.
-                *r = convert_hexaurl_char_to_lowercase((*s) >> SHIFT_TWO_BITS);
+                *r = convert((*s) >> 2);
             }
             2 => {
                 // If there are 2 remaining bytes:
                 // First character: decode by shifting the first byte right by 2 bits.
-                *r = convert_hexaurl_char_to_lowercase((*s) >> SHIFT_TWO_BITS);
+                *r = convert((*s) >> 2);
                 // Second character: combine the lower 2 bits of the first byte with the upper 4 bits of the second byte.
-                *r.add(1) = convert_hexaurl_char_to_lowercase(((*s & MASK_TWO_BITS) << SHIFT_FOUR_BITS) | (*s.add(1) >> SHIFT_FOUR_BITS));
+                *r.add(1) = convert(((*s & MASK_TWO_BITS) << 4) | (*s.add(1) >> 4));
             }
             _ => {
                 // No decoding is performed if there are no remaining bytes or an unexpected number.
@@ -239,7 +297,8 @@ mod tests {
         let original = "Test-Config";
         let config = hexaurl_validate::config::Config::default();
         let encoded: [u8; 16] = encode(original).expect("Encoding failed");
-        let decoded = decode_with_config::<16, 21>(&encoded, config).expect("Decoding with config failed");
+        let decoded =
+            decode_with_config::<16, 21>(&encoded, config).expect("Decoding with config failed");
         assert_eq!(original.to_ascii_lowercase(), decoded);
     }
 

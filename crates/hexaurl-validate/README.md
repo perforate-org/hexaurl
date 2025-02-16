@@ -16,7 +16,7 @@ This crate provides:
 
 ```rust
 use hexaurl_validate::{validate, validate_with_config, Error};
-use hexaurl_config::{Config, IdentifierComposition};
+use hexaurl_config::{Config, Composition};
 
 // Basic validation with default config
 let result = validate::<16>("Hello-World");
@@ -25,7 +25,7 @@ assert!(result.is_ok());
 // Custom validation configuration
 let config = Config::builder()
     .min_length(Some(5))
-    .identifier(IdentifierComposition::AlphanumericHyphen)
+    .composition(Composition::AlphanumericHyphen)
     .build();
 
 let result = validate_with_config::<16>("Hello-World", config);
@@ -38,19 +38,19 @@ let result = validate_with_config::<16>("Hello-World", config);
 Four different character set modes are available:
 
 ```rust
-use hexaurl_config::IdentifierComposition;
+use hexaurl_config::Composition;
 
 // Alphanumeric only (A-Z, 0-9)
-IdentifierComposition::Alphanumeric;
+Composition::Alphanumeric;
 
 // Alphanumeric + hyphen
-IdentifierComposition::AlphanumericHyphen;
+Composition::AlphanumericHyphen;
 
 // Alphanumeric + underscore
-IdentifierComposition::AlphanumericUnderscore;
+Composition::AlphanumericUnderscore;
 
 // Alphanumeric + both delimiters
-IdentifierComposition::AlphanumericHyphenUnderscore;
+Composition::AlphanumericHyphenUnderscore;
 ```
 
 ### Length Constraints
@@ -112,4 +112,4 @@ The validation is optimized for performance:
 - Early return on validation failures
 - Inline character validation
 
-See the root README.md for complete documentation.
+See [the root README.md](https://github.com/perforate-org/hexaurl#readme) for complete documentation.

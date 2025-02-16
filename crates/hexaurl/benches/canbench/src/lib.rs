@@ -47,10 +47,15 @@ thread_local! {
 fn init() {
     for key in MAP_KEYS.iter().copied() {
         let str = key.to_ascii_lowercase();
-        let hex = HexaUrl::new_minimal_checked(key).unwrap();
+        let hex = HexaUrl::new(key).unwrap();
         ACTORS_HEXAURL.with(|actors| actors.borrow_mut().insert(hex, Principal::anonymous()));
-        ACTORS_STRING.with(|actors| actors.borrow_mut().insert(str.clone(), Principal::anonymous()));
-        STABLE_ACTORS_HEXAURL.with(|actors| actors.borrow_mut().insert(hex, Principal::anonymous()));
+        ACTORS_STRING.with(|actors| {
+            actors
+                .borrow_mut()
+                .insert(str.clone(), Principal::anonymous())
+        });
+        STABLE_ACTORS_HEXAURL
+            .with(|actors| actors.borrow_mut().insert(hex, Principal::anonymous()));
         STABLE_ACTORS_STRING.with(|actors| actors.borrow_mut().insert(str, Principal::anonymous()));
     }
 }
@@ -62,7 +67,7 @@ fn get_actor_by_hex(input: HexaUrl) -> Option<Principal> {
 
 #[query]
 fn get_actor_by_hex_string(input: String) -> Option<Principal> {
-    let key = HexaUrl::new_minimal_checked(&input)?;
+    let key = HexaUrl::new_quick_checked(&input).ok()?;
     ACTORS_HEXAURL.with(|actors| actors.borrow().get(&key).copied())
 }
 
@@ -78,7 +83,7 @@ fn get_actor_stable_by_hex(input: HexaUrl) -> Option<Principal> {
 
 #[query]
 fn get_actor_stable_by_hex_string(input: String) -> Option<Principal> {
-    let key = HexaUrl::new_minimal_checked(&input)?;
+    let key = HexaUrl::new_quick_checked(&input).ok()?;
     STABLE_ACTORS_HEXAURL.with(|actors| actors.borrow().get(&key))
 }
 
@@ -120,3 +125,5 @@ fn insert_actor_stable_by_plain_string(input: (String, Principal)) -> Option<Pri
     validate::<16>(&input.0).ok()?;
     STABLE_ACTORS_STRING.with(|actors| actors.borrow_mut().insert(input.0, input.1))
 }
+
+ic_cdk::export_candid!();

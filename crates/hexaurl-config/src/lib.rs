@@ -1,11 +1,12 @@
 #![doc = include_str!("../README.md")]
+#![warn(missing_docs)]
 
 /// Configuration for validation rules.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Config {
     min_length: Option<usize>,
     max_length: Option<usize>,
-    identifier: IdentifierComposition,
+    composition: Composition,
     delimiter: Option<DelimiterRules>,
 }
 
@@ -14,30 +15,37 @@ impl Config {
     pub fn new(
         min_length: Option<usize>,
         max_length: Option<usize>,
-        identifier: IdentifierComposition,
+        composition: Composition,
         delimiter: Option<DelimiterRules>,
     ) -> Self {
+        assert!(
+            min_length.is_none()
+                || max_length.is_none()
+                || min_length.unwrap() <= max_length.unwrap(),
+            "Minimum length cannot be greater than maximum length"
+        );
+
         Self {
             min_length,
             max_length,
-            identifier,
+            composition,
             delimiter,
         }
     }
 
-    /// Constructs a minimal validation configuration.
+    /// Constructs a minimally restricted validation configuration.
     pub fn minimal() -> Self {
         Self {
             min_length: None,
             max_length: None,
-            identifier: IdentifierComposition::AlphanumericHyphenUnderscore,
+            composition: Composition::AlphanumericHyphenUnderscore,
             delimiter: Some(DelimiterRules::all_allowed()),
         }
     }
 
     /// Creates a new builder for validation config.
     pub fn builder() -> ConfigBuilder {
-        ConfigBuilder::new()
+        ConfigBuilder::default()
     }
 
     /// Returns the minimum allowed length.
@@ -51,8 +59,8 @@ impl Config {
     }
 
     /// Returns the identifier composition rule.
-    pub fn identifier(&self) -> IdentifierComposition {
-        self.identifier
+    pub fn composition(&self) -> Composition {
+        self.composition
     }
 
     /// Returns the delimiter rules, if any.
@@ -66,19 +74,29 @@ impl Default for Config {
         Self {
             min_length: Some(3),
             max_length: None,
-            identifier: IdentifierComposition::default(),
+            composition: Composition::default(),
             delimiter: None,
         }
     }
 }
 
 /// Builder for [`Config`].
-#[derive(Default)]
 pub struct ConfigBuilder {
     min_length: Option<usize>,
     max_length: Option<usize>,
-    identifier: Option<IdentifierComposition>,
+    composition: Composition,
     delimiter: Option<DelimiterRules>,
+}
+
+impl Default for ConfigBuilder {
+    fn default() -> Self {
+        Self {
+            min_length: Some(3),
+            max_length: None,
+            composition: Composition::default(),
+            delimiter: None,
+        }
+    }
 }
 
 impl ConfigBuilder {
@@ -100,8 +118,8 @@ impl ConfigBuilder {
     }
 
     /// Sets the identifier composition.
-    pub fn identifier(mut self, identifier: IdentifierComposition) -> Self {
-        self.identifier = Some(identifier);
+    pub fn composition(mut self, composition: Composition) -> Self {
+        self.composition = composition;
         self
     }
 
@@ -111,12 +129,19 @@ impl ConfigBuilder {
         self
     }
 
-    /// Builds the [`ValidationConfig`]. Missing values default to those defined by [`Default`].
+    /// Builds the [`Config`]. Missing values default to those defined by [`Default`].
     pub fn build(self) -> Config {
+        assert!(
+            self.min_length.is_none()
+                || self.max_length.is_none()
+                || self.min_length.unwrap() <= self.max_length.unwrap(),
+            "Minimum length cannot be greater than maximum length"
+        );
+
         Config {
-            min_length: self.min_length.or_else(|| Config::default().min_length()),
-            max_length: self.max_length.or_else(|| Config::default().max_length()),
-            identifier: self.identifier.unwrap_or_default(),
+            min_length: self.min_length,
+            max_length: self.max_length,
+            composition: self.composition,
             delimiter: self.delimiter,
         }
     }
@@ -124,7 +149,7 @@ impl ConfigBuilder {
 
 /// Valid options for identifier composition.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Debug)]
-pub enum IdentifierComposition {
+pub enum Composition {
     /// Letters and digits.
     Alphanumeric,
     /// Letters, digits and hyphen.
@@ -258,10 +283,14 @@ impl DelimiterRulesBuilder {
     pub fn build(self) -> DelimiterRules {
         DelimiterRules {
             allow_leading_trailing_hyphens: self.allow_leading_trailing_hyphens.unwrap_or(false),
-            allow_leading_trailing_underscores: self.allow_leading_trailing_underscores.unwrap_or(false),
+            allow_leading_trailing_underscores: self
+                .allow_leading_trailing_underscores
+                .unwrap_or(false),
             allow_consecutive_hyphens: self.allow_consecutive_hyphens.unwrap_or(false),
             allow_consecutive_underscores: self.allow_consecutive_underscores.unwrap_or(false),
-            allow_adjacent_hyphen_underscore: self.allow_adjacent_hyphen_underscore.unwrap_or(false),
+            allow_adjacent_hyphen_underscore: self
+                .allow_adjacent_hyphen_underscore
+                .unwrap_or(false),
         }
     }
 }
@@ -280,13 +309,13 @@ mod tests {
         let vc = Config::builder()
             .min_length(Some(4))
             .max_length(Some(12))
-            .identifier(IdentifierComposition::AlphanumericHyphenUnderscore)
+            .composition(Composition::AlphanumericHyphenUnderscore)
             .delimiter(Some(delimiter))
             .build();
 
         assert_eq!(vc.min_length(), Some(4));
         assert_eq!(vc.max_length(), Some(12));
-        assert_eq!(vc.identifier(), IdentifierComposition::AlphanumericHyphenUnderscore);
+        assert_eq!(vc.composition(), Composition::AlphanumericHyphenUnderscore);
         assert!(vc.delimiter().unwrap().allow_consecutive_hyphens());
         assert!(vc.delimiter().unwrap().allow_leading_trailing_underscores());
     }
