@@ -28,7 +28,7 @@
 
 mod core;
 #[cfg(feature = "pub-struct-core")]
-#[doc(cfg(feature = "pub-struct-core"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "pub-struct-core")))]
 pub use core::*;
 
 /// 8-byte HexaURL:

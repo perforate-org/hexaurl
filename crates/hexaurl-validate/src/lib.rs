@@ -11,7 +11,7 @@ mod error;
 #[cfg(not(feature = "char"))]
 mod validate_char;
 #[cfg(feature = "char")]
-#[doc(cfg(feature = "char"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "char")))]
 pub mod validate_char;
 
 pub use error::Error;

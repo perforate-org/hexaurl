@@ -34,4 +34,5 @@ hexaurl = { workspace = true }
 char = []
 
 [package.metadata.docs.rs]
-features = ["char"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

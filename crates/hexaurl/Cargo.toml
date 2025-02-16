@@ -52,4 +52,5 @@ name = "bench"
 harness = true
 
 [package.metadata.docs.rs]
-features = ["arbitrary", "candid", "ic-stable", "pub-struct-core", "default"]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

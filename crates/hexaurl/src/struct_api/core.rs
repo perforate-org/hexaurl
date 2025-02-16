@@ -306,12 +306,11 @@ impl<const N: usize, const S: usize> AsRef<[u8]> for HexaUrlCore<N, S> {
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
 #[cfg(feature = "serde")]
 mod serde_impl {
     use super::*;
 
-    #[doc(cfg(feature = "serde"))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
     impl<const N: usize, const S: usize> serde::Serialize for HexaUrlCore<N, S> {
         fn serialize<Ser: serde::Serializer>(
             &self,
@@ -329,8 +328,10 @@ mod serde_impl {
         use super::HexaUrlCore;
         use std::convert::TryFrom;
 
+        #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         pub(super) struct HexaUrlVisitor<const N: usize, const S: usize>;
 
+        #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         #[allow(clippy::needless_lifetimes)]
         impl<'de, const N: usize, const S: usize> serde::de::Visitor<'de> for HexaUrlVisitor<N, S> {
             type Value = HexaUrlCore<N, S>;
@@ -355,7 +356,7 @@ mod serde_impl {
         }
     }
 
-    #[doc(cfg(feature = "serde"))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
     impl<'de, const N: usize, const S: usize> serde::Deserialize<'de> for HexaUrlCore<N, S> {
         fn deserialize<D: serde::Deserializer<'de>>(
             deserializer: D,
@@ -374,9 +375,8 @@ mod serde_impl {
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "arbitrary")))]
 #[cfg(feature = "arbitrary")]
-#[doc(cfg(feature = "arbitrary"))]
+#[cfg_attr(docsrs, doc(cfg(feature = "arbitrary")))]
 impl<'a, const N: usize, const S: usize> arbitrary::Arbitrary<'a> for HexaUrlCore<N, S> {
     fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
         use crate::{decode::decode_core, validate::validate_with_config};
@@ -394,7 +394,6 @@ impl<'a, const N: usize, const S: usize> arbitrary::Arbitrary<'a> for HexaUrlCor
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "candid")))]
 #[cfg(feature = "candid")]
 mod candid {
     use super::HexaUrlCore;
@@ -403,7 +402,7 @@ mod candid {
         types::{Serializer, Type, TypeInner},
     };
 
-    #[doc(cfg(feature = "candid"))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "candid")))]
     impl<const N: usize, const S: usize> CandidType for HexaUrlCore<N, S> {
         fn _ty() -> Type {
             TypeInner::Vec(TypeInner::Nat8.into()).into()
@@ -417,7 +416,6 @@ mod candid {
     }
 }
 
-#[cfg_attr(docsrs, doc(cfg(feature = "ic-stable")))]
 #[cfg(feature = "ic-stable")]
 mod ic {
     use super::HexaUrlCore;
@@ -425,7 +423,7 @@ mod ic {
     use std::borrow::Cow;
 
     /// Implements the [`Storable`] trait for [`HexaUrlCore`] for use with Internet Computer stable structures.
-    #[doc(cfg(feature = "ic-stable"))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ic-stable")))]
     impl<const N: usize, const S: usize> Storable for HexaUrlCore<N, S> {
         fn to_bytes(&self) -> Cow<[u8]> {
             Cow::Borrowed(&self.0[..])
