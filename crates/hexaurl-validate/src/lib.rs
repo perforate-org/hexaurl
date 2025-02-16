@@ -1,6 +1,5 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
-#![feature(doc_cfg)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 use config::{Composition, Config};
