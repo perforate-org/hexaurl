@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
+#![cfg_attr(coverage_nightly, feature(coverage_attribute))]
 
 pub use hexaurl_config as config;
 pub use hexaurl_validate as validate;
@@ -11,9 +12,10 @@ pub mod encode;
 #[cfg(feature = "struct-api")]
 #[cfg_attr(docsrs, doc(cfg(feature = "struct-api")))]
 pub mod struct_api;
+mod utils;
 
-pub use decode::{decode, decode_quick_checked, decode_unchecked, decode_with_config};
-pub use encode::{encode, encode_quick_checked, encode_unchecked, encode_with_config};
+pub use decode::{decode, decode_unchecked, decode_with_config};
+pub use encode::{encode, encode_quick, encode_unchecked, encode_with_config};
 #[cfg(feature = "struct-api")]
 #[cfg_attr(docsrs, doc(cfg(feature = "struct-api")))]
 pub use struct_api::HexaUrl;

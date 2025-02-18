@@ -146,6 +146,29 @@ pub fn validate_with_config<const N: usize>(input: &str, config: Config) -> Resu
     Ok(())
 }
 
+/// Validates a string against the minimal configuration.
+///
+/// This function is optimized for speed by performing minimal checks:
+/// - Checks maximum length.
+/// - Validates each character as alphanumeric with hyphen or underscore.
+///
+/// # Const Parameters
+/// - `N`: The byte size of HexaURL encoded string.
+#[inline]
+pub fn validate_minimal_config<const N: usize>(input: &str) -> Result<(), Error> {
+    let max = calc_str_len(N);
+
+    // Check maximum length.
+    if input.len() > max {
+        return Err(Error::StringTooLong(max));
+    }
+    for &b in input.as_bytes() {
+        validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?;
+    }
+
+    Ok(())
+}
+
 /// Checks if the input string is safe for HexaURL encoding without risk of panics or conflicts.
 ///
 /// This function is optimized for speed by performing minimal checks:

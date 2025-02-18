@@ -4,10 +4,9 @@
 //! to ensure all HexaURL values are within the valid range, while the unchecked functions assume the input
 //! is already valid for increased performance.
 
-use crate::Error;
-use crate::{MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS};
+use crate::{Error, MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS, utils::len};
 use hexaurl_validate::{config::Config, validate_with_config};
-use std::slice;
+use std::{slice, str};
 
 /// This function converts a slice of HexaURL-encoded bytes into the original string based on the provided length.
 ///
@@ -29,7 +28,6 @@ pub fn decode<const N: usize, const S: usize>(bytes: &[u8; N]) -> Result<String,
     decode_with_config::<N, S>(bytes, Config::default())
 }
 
-#[inline]
 /// Decodes a slice of HexaURL-encoded bytes into a string using a custom validation configuration.
 ///
 /// # Parameters
@@ -41,6 +39,7 @@ pub fn decode<const N: usize, const S: usize>(bytes: &[u8; N]) -> Result<String,
 ///
 /// # Errors
 /// Returns an `Error` if the decoded string fails to validate according to the provided configuration.
+#[inline]
 pub fn decode_with_config<const N: usize, const S: usize>(
     bytes: &[u8; N],
     config: Config,
@@ -48,36 +47,6 @@ pub fn decode_with_config<const N: usize, const S: usize>(
     let res = decode_unchecked::<N, S>(bytes);
     validate_with_config::<N>(&res, config)?;
     Ok(res)
-}
-
-#[inline(always)]
-/// Decodes a slice of HexaURL-encoded bytes into a string using quick validation checks.
-///
-/// This function performs a fast decode of the encoded data, leveraging the core decoding routine,
-/// then checks for any null bytes in the result. Null bytes indicate an error in the encoding,
-/// in which case an error is returned. If no null bytes are found, the decoded slice is converted
-/// into a `String` without further validation.
-///
-/// # Parameters
-/// - `bytes`: A reference to an array of bytes containing HexaURL-encoded data.
-///
-/// # Returns
-/// A `Result` containing the decoded string if successful, or an `Error` if a null byte is detected.
-///
-/// # Safety
-/// The caller must ensure that the input is valid and does not contain null bytes that would cause
-/// an invalid UTF-8 conversion.
-pub fn decode_quick_checked<const N: usize, const S: usize>(
-    bytes: &[u8; N],
-) -> Result<String, Error> {
-    let mut res: [u8; S] = [0; S];
-    let slice = decode_core::<N, S>(bytes, &mut res);
-    if slice.contains(&0) {
-        Err(Error::InvalidByte)
-    } else {
-        // SAFETY: The function assumes the input is valid and does not contain any null bytes.
-        Ok(unsafe { std::str::from_utf8_unchecked(slice) }.to_owned())
-    }
 }
 
 /// This function performs decoding without validating whether the HexaURL values are within the
@@ -93,7 +62,7 @@ pub fn decode_quick_checked<const N: usize, const S: usize>(
 /// # Returns
 /// The decoded string.
 ///
-/// # Examples
+/// # Example
 ///
 /// ```rust
 /// use hexaurl::{encode, decode_unchecked};
@@ -108,11 +77,23 @@ pub fn decode_unchecked<const N: usize, const S: usize>(bytes: &[u8; N]) -> Stri
     let mut res: [u8; S] = [0; S];
     let slice = decode_core::<N, S>(bytes, &mut res);
     // SAFETY: The function assumes the input is valid and does not contain any null bytes.
-    unsafe { std::str::from_utf8_unchecked(slice) }.to_owned()
+    unsafe { str::from_utf8_unchecked(slice) }.to_owned()
 }
+
+// ============================================================
+//
+//            HexaURL Core Decoding Logic
+//
+// This section implements the central routines used to decode HexaURL-encoded bytes
+// into their corresponding ASCII representations. It processes the input in full 3-byte
+// chunks where possible and handles any remaining bytes appropriately, using unsafe
+// pointer arithmetic for performance while relying on prior validations for safety.
+//
+// ============================================================
 
 /// Index-based lookup table mapping encoded 6-bit values to their corresponding ASCII byte values.
 /// Invalid indices are set to 0 (null character).
+#[rustfmt::skip]
 const LOOKUP_TABLE: [u8; 64] = [
       0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,  45,   0,   0,
      48,  49,  50,  51,  52,  53,  54,  55,  56,  57,   0,   0,   0,   0,   0,   0,
@@ -200,13 +181,8 @@ pub(crate) fn decode_core<'a, const N: usize, const S: usize>(
         );
     }
 
-    // Trim any trailing null bytes or spaces from the result.
-    let trimmed_end = dst
-        .iter()
-        .rposition(|&c| c != b' ' && c != b'\0')
-        .unwrap_or(S - 1);
-
-    dst[..=trimmed_end].as_ref()
+    // Trim any trailing null bytes from the result.
+    dst[..len(dst)].as_ref()
 }
 
 /// Decodes a chunk of 3 bytes into 4 SIXBIT characters.

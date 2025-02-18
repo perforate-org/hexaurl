@@ -23,8 +23,8 @@ fn bench_encode() {
 }
 
 #[bench]
-fn bench_encode_quick_checked() {
-    let res = HexaUrl::new_quick_checked(black_box(INPUT)).unwrap();
+fn bench_encode_quick() {
+    let res = HexaUrl::new_quick(black_box(INPUT)).unwrap();
     black_box(res);
 }
 

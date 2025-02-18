@@ -1,19 +1,14 @@
 //! Encoding Utilities
 //!
 //! This module provides functions to encode strings to the HexaURL format, which packs characters into a compact
-//! SIXBIT representation. There are both safe and unsafe variants:
-//!
-//! • The safe functions ([`encode`], [`encode_with_config`]) perform runtime
-//!   validation to ensure each character falls within the legal SIXBIT range.
-//!
-//! • The unsafe functions ([`encode_quick_checked`], [`encode_unchecked`]) omit validation for speed, and it is the caller's responsibility to
-//!   guarantee that the input contains only valid HexaURL characters (ASCII 45, 48-57, 65-90, 95).
 //!
 //! All functions return a fixed-size byte array containing the packed result.
 
 use crate::{Error, MASK_FOUR_BITS, MASK_TWO_BITS};
 use hexaurl_config::Config;
-use hexaurl_validate::{check_encoding_safe, validate, validate_with_config};
+use hexaurl_validate::{
+    check_encoding_safe, validate, validate_minimal_config, validate_with_config,
+};
 
 /// Encodes the input string into a compact HexaURL representation using default validation rules.
 ///
@@ -52,17 +47,25 @@ pub fn encode<const N: usize>(input: &str) -> Result<[u8; N], Error> {
 ///
 /// # Arguments
 ///
-/// * `input` - A string slice holding the data to be encoded.
-/// * `config` - A [`Config`] instance that customizes the validation criteria.
+/// - `input` - A string slice holding the data to be encoded.
+/// - `config` - A [`Config`] instance that customizes the validation criteria.
 ///
 /// # Returns
 ///
-/// * `Ok([u8; N])` containing the encoded data if the input is valid.
-/// * `Err(Error)` if validation fails.
+/// - `Ok([u8; N])` containing the encoded data if the input is valid.
+/// - `Err(Error)` if validation fails.
 #[inline]
 pub fn encode_with_config<const N: usize>(input: &str, config: Config) -> Result<[u8; N], Error> {
     unsafe {
         validate_with_config::<N>(input, config)?;
+        Ok(encode_core(input))
+    }
+}
+
+/// Encodes the input string into a compact HexaURL representation using minimal validation rules.
+pub fn encode_minimal_config<const N: usize>(input: &str) -> Result<[u8; N], Error> {
+    unsafe {
+        validate_minimal_config::<N>(input)?;
         Ok(encode_core(input))
     }
 }
@@ -81,7 +84,7 @@ pub fn encode_with_config<const N: usize>(input: &str, config: Config) -> Result
 /// * `Some([u8; N])` if the input is safe and encoding is performed.
 /// * `None` if the input fails the quick check.
 #[inline(always)]
-pub fn encode_quick_checked<const N: usize>(input: &str) -> Result<[u8; N], Error> {
+pub fn encode_quick<const N: usize>(input: &str) -> Result<[u8; N], Error> {
     check_encoding_safe::<N>(input)?;
     unsafe { Ok(encode_core(input)) }
 }
@@ -90,7 +93,7 @@ pub fn encode_quick_checked<const N: usize>(input: &str) -> Result<[u8; N], Erro
 ///
 /// # Safety
 ///
-/// The input string must be valid ASCII.
+/// <div class="warning">The input string must be ASCII. Otherwise, it causes undefined behavior.</div>
 ///
 /// # Arguments
 ///
@@ -115,6 +118,22 @@ pub unsafe fn encode_unchecked<const N: usize>(input: &str) -> [u8; N] {
     unsafe { encode_core(input) }
 }
 
+// ============================================================
+//
+//            HexaURL Core Encoding Logic
+//
+// This section implements the core logic that converts an input ASCII string into its
+// compact HexaURL byte representation. The encoding algorithm splits the input into
+// 4-character blocks, converts each character into its SIXBIT value using a lookup table,
+// and then packs these values into bytes with the appropriate bit shifts. For input strings
+// whose length is not a multiple of four, the remaining characters are processed and padded
+// accordingly to produce a consistent, fixed-size output.
+//
+// ============================================================
+
+/// Index-based lookup table mapping ASCII characters to their corresponding values in the HexaURL encoding scheme.
+/// Invalid indices are set to 0 (null character).
+#[rustfmt::skip]
 const LOOKUP_TABLE: [u8; 128] = [
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
      0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
@@ -157,6 +176,7 @@ const unsafe fn convert(byte: u8) -> u8 {
 /// * A fixed-size byte array ([u8; N]) containing the packed HexaURL representation.
 #[inline(always)]
 unsafe fn encode_core<const N: usize>(input: &str) -> [u8; N] {
+
     let len = input.len();
     let mut bytes = [0u8; N];
 
@@ -244,19 +264,19 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_quick_checked_valid() {
+    fn test_encode_quick_valid() {
         let input = "test";
-        let encoded_opt = encode_quick_checked::<16>(input);
+        let encoded_opt = encode_quick::<16>(input);
         assert!(encoded_opt.is_ok());
         let encoded = encoded_opt.unwrap();
         assert_eq!(encoded.len(), 16);
     }
 
     #[test]
-    fn test_encode_quick_checked_invalid() {
+    fn test_encode_quick_invalid() {
         // Using '😃' which is not in the allowed SIXBIT range.
         let input = "invalid😃";
-        let encoded_opt = encode_quick_checked::<16>(input);
+        let encoded_opt = encode_quick::<16>(input);
         assert!(encoded_opt.is_err());
     }
 
@@ -290,9 +310,9 @@ mod tests {
     }
 
     #[test]
-    fn test_encode_quick_checked_non16() {
+    fn test_encode_quick_non16() {
         let input = "abc";
-        let encoded_opt = encode_quick_checked::<9>(input);
+        let encoded_opt = encode_quick::<9>(input);
         assert!(encoded_opt.is_ok());
         let encoded = encoded_opt.unwrap();
         assert_eq!(encoded.len(), 9);

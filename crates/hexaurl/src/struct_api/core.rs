@@ -1,13 +1,17 @@
 #[allow(unused_imports)]
-use super::{HexaUrl8, HexaUrl256};
+use super::{HexaUrl256, HexaUrl8};
 use crate::{
+    decode::{decode, decode_core, decode_unchecked, decode_with_config},
+    encode::{encode, encode_minimal_config, encode_quick, encode_unchecked, encode_with_config},
+    validate::validate_minimal_config,
     Error,
-    decode::{decode, decode_core, decode_quick_checked, decode_unchecked, decode_with_config},
-    encode::{encode, encode_quick_checked, encode_unchecked, encode_with_config},
-    validate::validate_with_config,
+    utils::len,
+    MASK_TWO_BITS,
+    MASK_FOUR_BITS,
+    MASK_SIX_BITS,
 };
 use hexaurl_config::Config;
-use std::fmt;
+use std::{fmt, str};
 
 /// A wrapper around a fixed-size byte array representing a HexaURL.
 ///
@@ -74,7 +78,7 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     /// - The input fails validation according to the provided configuration.
     /// - The encoded result exceeds the fixed size limits.
     #[inline]
-    pub fn new_with(input: &str, config: Config) -> Result<Self, Error> {
+    pub fn new_with_config(input: &str, config: Config) -> Result<Self, Error> {
         Ok(Self(encode_with_config(input, config)?))
     }
 
@@ -92,8 +96,8 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     /// - The input does not pass the minimal validation.
     /// - The encoded result exceeds the fixed size limits.
     #[inline]
-    pub fn new_minimal(input: &str) -> Result<Self, Error> {
-        Ok(Self(encode_with_config(input, Config::minimal())?))
+    pub fn new_minimal_config(input: &str) -> Result<Self, Error> {
+        Ok(Self(encode_minimal_config(input)?))
     }
 
     /// Encodes the input string using quick validation checks and creates a new `HexaUrlCore`.
@@ -109,15 +113,15 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     ///
     /// Returns a `HexaUrlCore` wrapped in `Result` if the quick validation checks pass.
     #[inline(always)]
-    pub fn new_quick_checked(input: &str) -> Result<Self, Error> {
-        Ok(Self(encode_quick_checked(input)?))
+    pub fn new_quick(input: &str) -> Result<Self, Error> {
+        Ok(Self(encode_quick(input)?))
     }
 
     /// Encodes the input string without any validation and creates a new `HexaUrlCore`.
     ///
     /// # Safety
     ///
-    /// The caller must ensure that the input string is valid ASCII.
+    /// <div class="warning">The input string must be ASCII. Otherwise, it causes undefined behavior.</div>
     ///
     /// # Arguments
     ///
@@ -149,15 +153,8 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     /// - Decoding fails according to the provided configuration.
     /// - The decoded string is not valid UTF-8.
     #[inline]
-    pub fn decode_with(&self, config: Config) -> Result<String, Error> {
+    pub fn decode_with_config(&self, config: Config) -> Result<String, Error> {
         decode_with_config::<N, S>(&self.0, config)
-    }
-
-    /// Performs a quick decode of the `HexaUrlCore` with minimal checking, yielding better performance
-    /// at the cost of full validation.
-    #[inline(always)]
-    fn decode_quick(&self) -> Result<String, Error> {
-        decode_quick_checked::<N, S>(&self.0)
     }
 
     /// Decodes the `HexaUrlCore` into a `String` without performing any validation.
@@ -186,12 +183,23 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     #[inline]
     pub fn try_from_bytes(bytes: &[u8; N]) -> Result<Self, Error> {
         let mut dst = [0; S];
-        let str = unsafe { std::str::from_utf8_unchecked(decode_core(bytes, &mut dst)) };
-        validate_with_config::<N>(str, Config::minimal())?;
+        let str = unsafe { str::from_utf8_unchecked(decode_core(bytes, &mut dst)) };
+        validate_minimal_config::<N>(str)?;
 
         let mut arr = [0; N];
         arr.copy_from_slice(bytes);
         Ok(Self(arr))
+    }
+
+    /// Creates a new `HexaUrlCore` from a byte slice without any validation or bounds checking.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that bytes parameter is valid and correctly sized for the target type.
+    /// No validation is performed.
+    #[inline]
+    pub const unsafe fn from_slice(bytes: &[u8; N]) -> Self {
+        Self(*bytes)
     }
 
     /// Returns the maximum possible length of the encoded `HexaUrlCore` string.
@@ -199,16 +207,117 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     pub const fn capacity() -> usize {
         S
     }
+
+    /// Returns the length of the encoded string representation.
+    ///
+    /// O(log N)
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        let byte_len = self.byte_len();
+        if byte_len == 0 {
+            return 0;
+        }
+
+        // Calculate base length from full 3-byte chunks
+        let base_len = byte_len / 3 * 4;
+
+        // Handle remaining bytes and trailing zeros
+        let remainder = byte_len % 3;
+        let last_byte = self.0[byte_len - 1];
+
+        let len = match remainder {
+            0 => {
+                if (last_byte & MASK_SIX_BITS) == 0 {
+                    base_len - 1
+                } else {
+                    base_len
+                }
+            },
+            1 => {
+                if (last_byte & MASK_TWO_BITS) == 0 {
+                    base_len + 1
+                } else {
+                    base_len + 2
+                }
+            }
+            2 => {
+                if (last_byte & MASK_FOUR_BITS) == 0 {
+                    base_len + 2
+                } else {
+                    base_len + 3
+                }
+            }
+            _ => unreachable!(),
+        };
+
+        if len > S {
+            S
+        } else {
+            len
+        }
+    }
+
+    /// Returns the length of the byte representation.
+    #[inline(always)]
+    fn byte_len(&self) -> usize {
+        len(&self.0)
+    }
+
+    /// Returns true if the encoded string representation is empty.
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        self.0[0] == 0
+    }
+}
+
+impl<const M: usize, const T: usize> HexaUrlCore<M, T> {
+    /// Converts an HexaUrlCore\<M\> to an HexaUrlCore\<N\>. If the length of the bytes being
+    /// converted is greater than N, the extra characters are ignored.
+    /// This operation produces a copy (non-destructive).
+    ///
+    /// # Example
+    ///
+    ///```ignore
+    ///  let s1: HexaUrlCore<8> = HexaUrlCore::new("abcdefg")?;
+    ///  let s2: HexaUrlCore<16> = s1.resize();
+    ///```
+    pub fn resize<const N: usize, const S: usize>(&self) -> HexaUrlCore<N, S> {
+        let byte_len = self.byte_len();
+        self.resize_core(byte_len)
+    }
+
+    /// Version of resize that does not allow string truncation due to length.
+    pub fn reallocate<const N: usize, const S: usize>(&self) -> Option<HexaUrlCore<N, S>> {
+        let byte_len = self.byte_len();
+        if byte_len < N {
+            Some(self.resize_core(byte_len))
+        } else {
+            None
+        }
+    }
+
+    fn resize_core<const N: usize, const S: usize>(&self, byte_len: usize) -> HexaUrlCore<N, S> {
+        let length = if byte_len < N {
+            byte_len
+        } else {
+            N
+        };
+        let mut arr = [0; N];
+        arr[..length].copy_from_slice(&self.0[..length]);
+        HexaUrlCore(arr)
+    }
 }
 
 impl<const N: usize, const S: usize> fmt::Display for HexaUrlCore<N, S> {
     /// Formats the `HexaUrlCore` as its decoded string representation.
     #[inline]
+    #[cfg_attr(coverage_nightly, coverage(off))]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.decode_quick() {
-            Ok(decoded) => write!(f, "{}", decoded),
-            Err(e) => write!(f, "Error formatting HexaUrl: {}", e),
-        }
+        let mut res: [u8; S] = [0; S];
+        let slice = decode_core::<N, S>(&self.0, &mut res);
+        // SAFETY: The function assumes the input is valid and does not contain any null bytes.
+        let str_inner = unsafe { str::from_utf8_unchecked(slice) };
+        f.pad(str_inner)
     }
 }
 
@@ -236,7 +345,7 @@ impl<const N: usize, const S: usize> TryFrom<&String> for HexaUrlCore<N, S> {
     /// Returns an `Error` if validation fails or conversion is impossible.
     #[inline]
     fn try_from(value: &String) -> Result<Self, Self::Error> {
-        Self::new_minimal(value)
+        Self::new_minimal_config(value)
     }
 }
 
@@ -324,18 +433,19 @@ mod serde_impl {
         }
     }
 
-    mod deserialize {
+    pub(crate) mod deserialize {
         use super::HexaUrlCore;
         use std::convert::TryFrom;
 
         #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
-        pub(super) struct HexaUrlVisitor<const N: usize, const S: usize>;
+        pub(crate) struct HexaUrlVisitor<const N: usize, const S: usize>;
 
         #[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
         #[allow(clippy::needless_lifetimes)]
         impl<'de, const N: usize, const S: usize> serde::de::Visitor<'de> for HexaUrlVisitor<N, S> {
             type Value = HexaUrlCore<N, S>;
 
+            #[cfg_attr(coverage_nightly, coverage(off))]
             fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 formatter.write_str("bytes or string")
             }
@@ -344,7 +454,7 @@ mod serde_impl {
             where
                 E: serde::de::Error,
             {
-                HexaUrlCore::new_quick_checked(value).map_err(E::custom)
+                HexaUrlCore::new_quick(value).map_err(E::custom)
             }
 
             fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
@@ -386,7 +496,7 @@ impl<'a, const N: usize, const S: usize> arbitrary::Arbitrary<'a> for HexaUrlCor
         u.fill_buffer(&mut bytes[..len])?;
 
         let mut dst = [0; S];
-        let str = unsafe { std::str::from_utf8_unchecked(decode_core(&bytes, &mut dst)) };
+        let str = unsafe { str::from_utf8_unchecked(decode_core(&bytes, &mut dst)) };
         validate_with_config::<N>(str, Config::minimal())
             .map_err(|_| arbitrary::Error::IncorrectFormat)?;
 
@@ -398,8 +508,8 @@ impl<'a, const N: usize, const S: usize> arbitrary::Arbitrary<'a> for HexaUrlCor
 mod candid {
     use super::HexaUrlCore;
     use candid::{
-        CandidType,
         types::{Serializer, Type, TypeInner},
+        CandidType,
     };
 
     #[cfg_attr(docsrs, doc(cfg(feature = "candid")))]
@@ -454,6 +564,15 @@ mod tests {
     fn test_encode_decode() {
         let input = "hello";
         let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+        let decoded = hexaurl.decode().unwrap();
+        assert_eq!(input, decoded);
+    }
+
+    /// Tests encoding and decoding with minimal config
+    #[test]
+    fn test_encode_decode_minimal() {
+        let input = "hello";
+        let hexaurl = HexaUrlCore::<16, 21>::new_minimal_config(input).unwrap();
         let decoded = hexaurl.decode().unwrap();
         assert_eq!(input, decoded);
     }
@@ -523,9 +642,114 @@ mod tests {
     fn test_new_with_config() {
         let input = "hello";
         let config = Config::minimal();
-        let hexaurl = HexaUrlCore::<16, 21>::new_with(input, config).unwrap();
-        let decoded = hexaurl.decode_with(config).unwrap();
+        let hexaurl = HexaUrlCore::<16, 21>::new_with_config(input, config).unwrap();
+        let decoded = hexaurl.decode_with_config(config).unwrap();
         assert_eq!(input, decoded);
+    }
+
+    /// Tests the len() method of HexaUrlCore
+    #[test]
+    fn test_len() {
+        let empty = HexaUrlCore::<16, 21>::new_minimal_config("").unwrap();
+        assert_eq!(empty.len(), 0);
+
+        let input = "hello";
+        let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+        assert_eq!(hexaurl.len(), input.len());
+
+        let long_input = "hello-world";
+        let long_hexaurl = HexaUrlCore::<16, 21>::new(long_input).unwrap();
+        assert_eq!(long_hexaurl.len(), long_input.len());
+    }
+
+/// Tests resizing to a larger capacity
+    #[test]
+    fn test_resize_larger() {
+        let input = "hello";
+        let small = HexaUrlCore::<8, 10>::new(input).unwrap();
+        let large = small.resize::<16, 21>();
+        assert_eq!(large.decode().unwrap(), input);
+    }
+
+    /// Tests resizing to a smaller capacity (with truncation)
+    #[test]
+    fn test_resize_smaller() {
+        let input = "hello-world";
+        let large = HexaUrlCore::<16, 21>::new(input).unwrap();
+        let small = large.resize::<8, 10>();
+        assert_eq!(small.decode().unwrap(), "hello-worl");
+    }
+
+    /// Tests reallocation to larger capacity
+    #[test]
+    fn test_reallocate_larger() {
+        let input = "hello";
+        let small = HexaUrlCore::<8, 10>::new(input).unwrap();
+        let large = small.reallocate::<16, 21>().unwrap();
+        assert_eq!(large.decode().unwrap(), input);
+    }
+
+    /// Tests reallocation to smaller capacity
+    #[test]
+    fn test_reallocate_smaller() {
+        let input = "hello";
+        let large = HexaUrlCore::<16, 21>::new(input).unwrap();
+        let small = large.reallocate::<8, 10>().unwrap();
+        assert_eq!(small.decode().unwrap(), input);
+    }
+
+    /// Tests reallocation failure when content is too large
+    #[test]
+    fn test_reallocate_too_large() {
+        let input = "hello-world";
+        let large = HexaUrlCore::<16, 21>::new(input).unwrap();
+        assert!(large.reallocate::<8, 10>().is_none());
+    }
+
+    /// Tests try_from for String and &String
+    #[test]
+    fn test_try_from_string() {
+        let input = String::from("hello");
+        let hexaurl1 = HexaUrlCore::<16, 21>::try_from(input.clone()).unwrap();
+        let hexaurl2 = HexaUrlCore::<16, 21>::try_from(&input).unwrap();
+        assert_eq!(hexaurl1, hexaurl2);
+    }
+
+    /// Tests as_ref implementations
+    #[test]
+    fn test_as_ref() {
+        let input = "hello";
+        let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+        let _: &[u8; 16] = hexaurl.as_ref();
+        let _: &[u8] = hexaurl.as_ref();
+    }
+
+    /// Tests Display implementation
+    #[test]
+    fn test_display() {
+        let input = "hello";
+        let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+        assert_eq!(hexaurl.to_string(), input);
+    }
+
+    /// Tests TryFrom<[u8; N]> implementation
+    #[test]
+    fn test_try_from_array() {
+        let input = "hello";
+        let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+        let bytes = *hexaurl.as_bytes();
+        let hexaurl2 = HexaUrlCore::<16, 21>::try_from(bytes).unwrap();
+        assert_eq!(hexaurl, hexaurl2);
+    }
+
+    /// Tests TryFrom<&[u8; N]> implementation
+    #[test]
+    fn test_try_from_array_ref() {
+        let input = "hello";
+        let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+        let bytes = hexaurl.as_bytes();
+        let hexaurl2 = HexaUrlCore::<16, 21>::try_from(bytes).unwrap();
+        assert_eq!(hexaurl, hexaurl2);
     }
 
     #[cfg(feature = "serde")]
@@ -555,6 +779,49 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "candid")]
+    mod candid_impl {
+        use super::HexaUrlCore;
+        use candid::{types::TypeInner, CandidType, Decode, Encode};
+
+        /// Tests CandidType implementation
+        #[test]
+        fn test_candid_type() {
+            assert_eq!(
+                HexaUrlCore::<16, 21>::_ty(),
+                TypeInner::Vec(TypeInner::Nat8.into()).into()
+            );
+        }
+
+        /// Tests IDL serialization
+        #[test]
+        fn test_idl_serialization() {
+            let input = "hello";
+            let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+            let encoded = Encode!(&hexaurl);
+            assert!(encoded.is_ok());
+            let decoded = Decode!(&encoded.unwrap(), HexaUrlCore<16, 21>);
+            assert!(decoded.is_ok());
+            assert_eq!(hexaurl, decoded.unwrap());
+        }
+    }
+
+    #[cfg(feature = "ic-stable")]
+    mod storable_impl {
+        use super::*;
+        use ic_stable_structures::Storable;
+
+        /// Tests Storable implementation
+        #[test]
+        fn test_storable() {
+            let input = "hello";
+            let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
+            let bytes = hexaurl.to_bytes();
+            let restored = HexaUrlCore::<16, 21>::from_bytes(bytes);
+            assert_eq!(hexaurl, restored);
+        }
+    }
+
     #[cfg(feature = "arbitrary")]
     mod arbitrary_impl {
         use super::*;
@@ -566,7 +833,7 @@ mod tests {
         fn test_arbitrary() {
             fn prop(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<()> {
                 let hexaurl = HexaUrlCore::<16, 21>::arbitrary(u)?;
-                let decoded = hexaurl.decode_with(Config::minimal()).unwrap();
+                let decoded = hexaurl.decode_with_config(Config::minimal()).unwrap();
                 assert_eq!(hexaurl.to_string(), decoded);
                 Ok(())
             }

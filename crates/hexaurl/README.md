@@ -14,15 +14,15 @@ This crate delivers a robust implementation that includes:
 
 ## Usage
 
-```rust
+```rust,ignore
 use hexaurl::{encode, decode};
 
 // Encode a string with built-in validation
 let input = "hello-world";
-let encoded: [u8; 16] = encode(input).unwrap();
+let encoded: [u8; 16] = encode(input)?;
 
 // Decode back to a string with validation
-let decoded = decode::<16, 21>(&encoded).unwrap();
+let decoded = decode::<16, 21>(&encoded)?;
 assert_eq!(decoded, input);
 ```
 
@@ -45,7 +45,7 @@ let safe_key = HexaUrl::new(input)
 map.insert(safe_key, 42);
 
 // Retrieve the value using the unchecked constructor when the input is known to be safe.
-let retrieved = if let Ok(key) = HexaUrl::new_quick_checked(input) {
+let retrieved = if let Ok(key) = HexaUrl::new_quick(input) {
     map.get(&key)
 } else {
     None

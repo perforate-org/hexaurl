@@ -11,7 +11,7 @@
     day: 9,
   ),
   abstract: [
-    "HexaURL is a fixed-length, compressed, case-insensitive, URL-safe text format. It is designed to serve as a unique identifier for various applications, including short URLs, database record IDs, and file hash values, all while enabling rapid searches.",
+    "HexaURL is a fixed-length, compressed, case-insensitive, URL-safe text format. It is designed to serve as a human-readable identifier for various applications, including short URLs and database record IDs, all while enabling rapid searches.",
   ],
 )
 

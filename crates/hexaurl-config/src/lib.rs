@@ -300,6 +300,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_config_new() {
+        let config = Config::new(Some(5), Some(10), Composition::Alphanumeric, None);
+
+        assert_eq!(config.min_length(), Some(5));
+        assert_eq!(config.max_length(), Some(10));
+        assert_eq!(config.composition(), Composition::Alphanumeric);
+        assert_eq!(config.delimiter(), None);
+    }
+
+    #[test]
+    fn test_config_builder_new() {
+        let builder = ConfigBuilder::new();
+        assert_eq!(builder.min_length, Some(3));
+        assert_eq!(builder.max_length, None);
+        assert_eq!(builder.composition, Composition::AlphanumericHyphen);
+        assert_eq!(builder.delimiter, None);
+    }
+
+    #[test]
+    fn test_delimiter_rules_new() {
+        let rules = DelimiterRules::new(true, false, true, false, true);
+        assert!(rules.allow_leading_trailing_hyphens());
+        assert!(!rules.allow_leading_trailing_underscores());
+        assert!(rules.allow_consecutive_hyphens());
+        assert!(!rules.allow_consecutive_underscores());
+        assert!(rules.allow_adjacent_hyphen_underscore());
+    }
+
+    #[test]
+    fn test_delimiter_rules_builder() {
+        let builder = DelimiterRules::builder();
+        assert_eq!(builder.allow_leading_trailing_hyphens, None);
+        assert_eq!(builder.allow_leading_trailing_underscores, None);
+        assert_eq!(builder.allow_consecutive_hyphens, None);
+        assert_eq!(builder.allow_consecutive_underscores, None);
+        assert_eq!(builder.allow_adjacent_hyphen_underscore, None);
+    }
+
+    #[test]
     fn test_validation_config_builder_custom_values() {
         let delimiter = DelimiterRulesBuilder::new()
             .allow_leading_trailing_underscores(true)
@@ -318,5 +357,51 @@ mod tests {
         assert_eq!(vc.composition(), Composition::AlphanumericHyphenUnderscore);
         assert!(vc.delimiter().unwrap().allow_consecutive_hyphens());
         assert!(vc.delimiter().unwrap().allow_leading_trailing_underscores());
+    }
+
+    #[test]
+    fn test_config_minimal() {
+        let config = Config::minimal();
+        assert_eq!(config.min_length(), None);
+        assert_eq!(config.max_length(), None);
+        assert_eq!(
+            config.composition(),
+            Composition::AlphanumericHyphenUnderscore
+        );
+        assert!(config.delimiter().is_some());
+    }
+
+    #[test]
+    fn test_delimiter_rules_all_allowed() {
+        let rules = DelimiterRules::all_allowed();
+        assert!(rules.allow_leading_trailing_hyphens());
+        assert!(rules.allow_leading_trailing_underscores());
+        assert!(rules.allow_consecutive_hyphens());
+        assert!(rules.allow_consecutive_underscores());
+        assert!(rules.allow_adjacent_hyphen_underscore());
+    }
+
+    #[test]
+    fn test_delimiter_rules_builder_new() {
+        let rules = DelimiterRulesBuilder::new()
+            .allow_leading_trailing_hyphens(true)
+            .allow_consecutive_underscores(true)
+            .allow_adjacent_hyphen_underscore(true)
+            .build();
+
+        assert!(rules.allow_leading_trailing_hyphens());
+        assert!(!rules.allow_leading_trailing_underscores());
+        assert!(!rules.allow_consecutive_hyphens());
+        assert!(rules.allow_consecutive_underscores());
+        assert!(rules.allow_adjacent_hyphen_underscore());
+    }
+
+    #[test]
+    #[should_panic(expected = "Minimum length cannot be greater than maximum length")]
+    fn test_invalid_length_config() {
+        Config::builder()
+            .min_length(Some(10))
+            .max_length(Some(5))
+            .build();
     }
 }

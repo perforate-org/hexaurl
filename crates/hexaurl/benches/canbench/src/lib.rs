@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "nightly", feature(test))]
 
 use candid::Principal;
-use hexaurl::{HexaUrl, validate::validate};
+use hexaurl::{validate::validate, HexaUrl};
 use ic_cdk_macros::*;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -67,7 +67,7 @@ fn get_actor_by_hex(input: HexaUrl) -> Option<Principal> {
 
 #[query]
 fn get_actor_by_hex_string(input: String) -> Option<Principal> {
-    let key = HexaUrl::new_quick_checked(&input).ok()?;
+    let key = HexaUrl::new_quick(&input).ok()?;
     ACTORS_HEXAURL.with(|actors| actors.borrow().get(&key).copied())
 }
 
@@ -83,7 +83,7 @@ fn get_actor_stable_by_hex(input: HexaUrl) -> Option<Principal> {
 
 #[query]
 fn get_actor_stable_by_hex_string(input: String) -> Option<Principal> {
-    let key = HexaUrl::new_quick_checked(&input).ok()?;
+    let key = HexaUrl::new_quick(&input).ok()?;
     STABLE_ACTORS_HEXAURL.with(|actors| actors.borrow().get(&key))
 }
 
