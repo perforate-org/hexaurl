@@ -321,6 +321,14 @@ impl<const N: usize, const S: usize> fmt::Display for HexaUrlCore<N, S> {
     }
 }
 
+impl<const N: usize, const S: usize> From<HexaUrlCore<N, S>> for String {
+    /// Converts the `HexaUrlCore` into its decoded string representation.
+    #[inline]
+    fn from(value: HexaUrlCore<N, S>) -> String {
+        value.to_string()
+    }
+}
+
 impl<const N: usize, const S: usize> TryFrom<String> for HexaUrlCore<N, S> {
     type Error = Error;
 
