@@ -311,7 +311,6 @@ impl<const M: usize, const T: usize> HexaUrlCore<M, T> {
 impl<const N: usize, const S: usize> fmt::Display for HexaUrlCore<N, S> {
     /// Formats the `HexaUrlCore` as its decoded string representation.
     #[inline]
-    #[cfg_attr(coverage_nightly, coverage(off))]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut res: [u8; S] = [0; S];
         let slice = decode_core::<N, S>(&self.0, &mut res);
