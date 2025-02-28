@@ -356,6 +356,20 @@ impl<const N: usize, const S: usize> TryFrom<&String> for HexaUrlCore<N, S> {
     }
 }
 
+impl<const N: usize, const S: usize> TryFrom<&str> for HexaUrlCore<N, S> {
+    type Error = Error;
+
+    /// Attempts to create a `HexaUrlCore` from a String reference.
+    ///
+    /// # Errors
+    ///
+    /// Returns an `Error` if validation fails or conversion is impossible.
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new_minimal_config(value)
+    }
+}
+
 impl<const N: usize, const S: usize> TryFrom<&[u8]> for HexaUrlCore<N, S> {
     type Error = Error;
 
