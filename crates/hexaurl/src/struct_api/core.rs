@@ -442,6 +442,14 @@ impl<const N: usize, const S: usize> Binary for HexaUrlCore<N, S> {
     }
 }
 
+impl<const N: usize, const S: usize> str::FromStr for HexaUrlCore<N, S> {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::new(s)
+    }
+}
+
 #[cfg(feature = "serde")]
 mod serde_impl {
     use super::*;
