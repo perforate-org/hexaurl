@@ -564,8 +564,12 @@ mod ic {
     /// Implements the [`Storable`] trait for [`HexaUrlCore`] for use with Internet Computer stable structures.
     #[cfg_attr(docsrs, doc(cfg(feature = "ic-stable")))]
     impl<const N: usize, const S: usize> Storable for HexaUrlCore<N, S> {
-        fn to_bytes(&self) -> Cow<[u8]> {
+        fn to_bytes(&self) -> Cow<'_, [u8]> {
             Cow::Borrowed(&self.0[..])
+        }
+
+        fn into_bytes(self) -> Vec<u8> {
+            self.0.to_vec()
         }
 
         fn from_bytes(bytes: Cow<[u8]>) -> Self {

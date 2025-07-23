@@ -26,9 +26,9 @@ keywords = ["parser", "database", "text", "string"]
 [dependencies]
 arbitrary = { version = "1", optional = true }
 candid = { version = "0.10", optional = true }
-hexaurl-config = { workspace = true }
-hexaurl-validate = { workspace = true }
-ic-stable-structures = { version = "0.6", optional = true }
+hexaurl-config.workspace = true
+hexaurl-validate.workspace = true
+ic-stable-structures = { version = "0.7", optional = true }
 serde = { version = "1", optional = true, default-features = false }
 
 [dev-dependencies]
