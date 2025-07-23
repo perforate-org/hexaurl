@@ -11,7 +11,7 @@ use crate::{
     MASK_SIX_BITS,
 };
 use hexaurl_config::Config;
-use std::{fmt::{self, Binary}, str};
+use std::{fmt, str};
 
 /// A wrapper around a fixed-size byte array representing a HexaURL.
 ///
@@ -433,12 +433,6 @@ impl<const N: usize, const S: usize> AsRef<[u8]> for HexaUrlCore<N, S> {
     #[inline(always)]
     fn as_ref(&self) -> &[u8] {
         &self.0
-    }
-}
-
-impl<const N: usize, const S: usize> Binary for HexaUrlCore<N, S> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:b}", self.0)
     }
 }
 
