@@ -4,7 +4,7 @@ version = "0.0.1"
 authors = ["Inomoto, Yota <yota@perforate.org>"]
 edition = "2018"
 license = "MIT OR Apache-2.0"
-rust-version = "1.31.0"
+rust-version = "1.74.0"
 
 description = "HexaURL encoding format, suitable for user IDs and URL-safe strings."
 include = [

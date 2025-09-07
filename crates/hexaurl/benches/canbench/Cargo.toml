@@ -2,16 +2,16 @@
 publish = false
 name = "canbench-hexaurl"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-candid = "0.10.14"
-canbench-rs = { version = "0.1.15", optional = true }
-ic-cdk = "0.17.2"
-ic-cdk-macros = "0.17.2"
+candid = "0.10.18"
+canbench-rs = { version = "0.2.1", optional = true }
+ic-cdk = "0.18.7"
+ic-cdk-macros = "0.18.7"
 ic-stable-structures = "0.7"
 hexaurl = { path = "../../", features = ["candid", "ic-stable"] }
 once_cell = "1.21"

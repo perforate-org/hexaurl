@@ -695,7 +695,7 @@ mod tests {
         assert_eq!(long_hexaurl.len(), long_input.len());
     }
 
-/// Tests resizing to a larger capacity
+    /// Tests resizing to a larger capacity
     #[test]
     fn test_resize_larger() {
         let input = "hello";
@@ -806,8 +806,11 @@ mod tests {
             // Here we only check that the process does not panic and round-trips correctly.
             let input = "hello";
             let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
-            let encoded = bincode::serialize(&hexaurl).unwrap();
-            let decoded: HexaUrlCore<16, 21> = bincode::deserialize(&encoded).unwrap();
+
+            let config = bincode::config::standard();
+
+            let encoded = bincode::serde::encode_to_vec(hexaurl, config).unwrap();
+            let (decoded, _): (HexaUrlCore<16, 21>, usize) = bincode::serde::decode_from_slice(&encoded, config).unwrap();
             assert_eq!(hexaurl, decoded);
         }
     }
