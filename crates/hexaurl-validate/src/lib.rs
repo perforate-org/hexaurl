@@ -298,17 +298,14 @@ pub fn validate_with_compiled_config<const N: usize>(
     }
 
     // Validate leading/trailing delimiter characters.
-    // Reaching here implies at least one delimiter was found, so `len > 0`.
     let rules = compiled.delimiter_rules();
-    let first = bytes[0];
-    let last = bytes[len - 1];
-    if ((first == b'-') && !rules.allow_leading_hyphens())
-        || ((last == b'-') && !rules.allow_trailing_hyphens())
+    if (input.starts_with('-') && !rules.allow_leading_hyphens())
+        || (input.ends_with('-') && !rules.allow_trailing_hyphens())
     {
         return Err(Error::LeadingTrailingHyphen);
     }
-    if ((first == b'_') && !rules.allow_leading_underscores())
-        || ((last == b'_') && !rules.allow_trailing_underscores())
+    if (input.starts_with('_') && !rules.allow_leading_underscores())
+        || (input.ends_with('_') && !rules.allow_trailing_underscores())
     {
         return Err(Error::LeadingTrailingUnderscore);
     }
