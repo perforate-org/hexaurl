@@ -2,7 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.1.0] - 2026-02-22
 
 ### Breaking Changes
 
@@ -27,3 +30,14 @@ All notable changes to this project will be documented in this file.
 
 - Updated `crates/hexaurl-config/README.md` for `Config::<N>::builder()` workflow.
 - Updated `crates/hexaurl-validate/README.md` for `Config<N>` validation workflow.
+
+### Build
+
+- Updated Rust edition to `2024`:
+  - `hexaurl-config` (`crates/hexaurl-config/Cargo.toml`) from `2018` to `2024`
+  - `hexaurl-validate` (`crates/hexaurl-validate/Cargo.toml`) from `2018` to `2024`
+  - `hexaurl` (`crates/hexaurl/Cargo.toml`) from `2021` to `2024`
+- Updated minimum supported Rust version (`rust-version`) to `1.85.0`:
+  - `hexaurl-config` from `1.31.0` to `1.85.0`
+  - `hexaurl-validate` from `1.74.0` to `1.85.0`
+  - `hexaurl` from `1.71.0` to `1.85.0`

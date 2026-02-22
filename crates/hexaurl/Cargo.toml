@@ -1,10 +1,10 @@
 [package]
 name = "hexaurl"
-version = "0.0.1"
+version = "0.1.0"
 authors = ["Inomoto, Yota <yota@perforate.org>"]
-edition = "2021"
+edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.71.0"
+rust-version = "1.85.0"
 
 description = "HexaURL, an fixed-size encoding format designed for validating case-insensitive URL-safe strings and enabling high-speed search capabilities."
 include = [
