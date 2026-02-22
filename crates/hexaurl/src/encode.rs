@@ -461,13 +461,13 @@ fn encode_core_validated_inner<const N: usize>(
     }
 
     if len > 0 {
-        if !delimiter_rules.allow_leading_trailing_hyphens()
-            && (first_byte == b'-' || last_byte == b'-')
+        if (first_byte == b'-' && !delimiter_rules.allow_leading_hyphens())
+            || (last_byte == b'-' && !delimiter_rules.allow_trailing_hyphens())
         {
             return Err(Error::LeadingTrailingHyphen);
         }
-        if !delimiter_rules.allow_leading_trailing_underscores()
-            && (first_byte == b'_' || last_byte == b'_')
+        if (first_byte == b'_' && !delimiter_rules.allow_leading_underscores())
+            || (last_byte == b'_' && !delimiter_rules.allow_trailing_underscores())
         {
             return Err(Error::LeadingTrailingUnderscore);
         }

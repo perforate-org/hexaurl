@@ -69,14 +69,18 @@ mod benches {
     static CFG_STRICT_HYPHEN: Lazy<Config<16>> = Lazy::new(|| {
         Config::<16>::builder()
             .composition(Composition::AlphanumericHyphen)
-            .delimiter(Some(DelimiterRules::new(false, false, false, false, false)))
+            .delimiter(Some(DelimiterRules::new(
+                false, false, false, false, false, false, false,
+            )))
             .build()
             .unwrap()
     });
     static CFG_STRICT_UNDERSCORE: Lazy<Config<16>> = Lazy::new(|| {
         Config::<16>::builder()
             .composition(Composition::AlphanumericUnderscore)
-            .delimiter(Some(DelimiterRules::new(false, false, false, false, false)))
+            .delimiter(Some(DelimiterRules::new(
+                false, false, false, false, false, false, false,
+            )))
             .build()
             .unwrap()
     });

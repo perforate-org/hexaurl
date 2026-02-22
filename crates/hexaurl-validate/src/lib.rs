@@ -194,15 +194,13 @@ pub fn validate_with_compiled_config<const N: usize>(
     }
 
     // Validate leading/trailing delimiter characters.
-    if !compiled.delimiter_rules().allow_leading_trailing_hyphens()
-        && (input.starts_with('-') || input.ends_with('-'))
+    if (input.starts_with('-') && !compiled.delimiter_rules().allow_leading_hyphens())
+        || (input.ends_with('-') && !compiled.delimiter_rules().allow_trailing_hyphens())
     {
         return Err(Error::LeadingTrailingHyphen);
     }
-    if !compiled
-        .delimiter_rules()
-        .allow_leading_trailing_underscores()
-        && (input.starts_with('_') || input.ends_with('_'))
+    if (input.starts_with('_') && !compiled.delimiter_rules().allow_leading_underscores())
+        || (input.ends_with('_') && !compiled.delimiter_rules().allow_trailing_underscores())
     {
         return Err(Error::LeadingTrailingUnderscore);
     }

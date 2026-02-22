@@ -232,8 +232,10 @@ pub enum Composition {
 /// Rules for allowed delimiters.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Debug)]
 pub struct DelimiterRules {
-    allow_leading_trailing_hyphens: bool,
-    allow_leading_trailing_underscores: bool,
+    allow_leading_hyphens: bool,
+    allow_trailing_hyphens: bool,
+    allow_leading_underscores: bool,
+    allow_trailing_underscores: bool,
     allow_consecutive_hyphens: bool,
     allow_consecutive_underscores: bool,
     allow_adjacent_hyphen_underscore: bool,
@@ -242,15 +244,19 @@ pub struct DelimiterRules {
 impl DelimiterRules {
     /// Creates a new set of delimiter rules.
     pub fn new(
-        allow_leading_trailing_hyphens: bool,
-        allow_leading_trailing_underscores: bool,
+        allow_leading_hyphens: bool,
+        allow_trailing_hyphens: bool,
+        allow_leading_underscores: bool,
+        allow_trailing_underscores: bool,
         allow_consecutive_hyphens: bool,
         allow_consecutive_underscores: bool,
         allow_adjacent_hyphen_underscore: bool,
     ) -> Self {
         Self {
-            allow_leading_trailing_hyphens,
-            allow_leading_trailing_underscores,
+            allow_leading_hyphens,
+            allow_trailing_hyphens,
+            allow_leading_underscores,
+            allow_trailing_underscores,
             allow_consecutive_hyphens,
             allow_consecutive_underscores,
             allow_adjacent_hyphen_underscore,
@@ -260,8 +266,10 @@ impl DelimiterRules {
     /// Creates a new set of delimiter rules with all rules allowed.
     pub fn all_allowed() -> Self {
         Self {
-            allow_leading_trailing_hyphens: true,
-            allow_leading_trailing_underscores: true,
+            allow_leading_hyphens: true,
+            allow_trailing_hyphens: true,
+            allow_leading_underscores: true,
+            allow_trailing_underscores: true,
             allow_consecutive_hyphens: true,
             allow_consecutive_underscores: true,
             allow_adjacent_hyphen_underscore: true,
@@ -273,14 +281,24 @@ impl DelimiterRules {
         DelimiterRulesBuilder::new()
     }
 
-    /// Whether leading and trailing hyphens are allowed.
-    pub fn allow_leading_trailing_hyphens(&self) -> bool {
-        self.allow_leading_trailing_hyphens
+    /// Whether leading hyphens are allowed.
+    pub fn allow_leading_hyphens(&self) -> bool {
+        self.allow_leading_hyphens
     }
 
-    /// Whether leading and trailing underscores are allowed.
-    pub fn allow_leading_trailing_underscores(&self) -> bool {
-        self.allow_leading_trailing_underscores
+    /// Whether trailing hyphens are allowed.
+    pub fn allow_trailing_hyphens(&self) -> bool {
+        self.allow_trailing_hyphens
+    }
+
+    /// Whether leading underscores are allowed.
+    pub fn allow_leading_underscores(&self) -> bool {
+        self.allow_leading_underscores
+    }
+
+    /// Whether trailing underscores are allowed.
+    pub fn allow_trailing_underscores(&self) -> bool {
+        self.allow_trailing_underscores
     }
 
     /// Whether consecutive hyphens are allowed.
@@ -302,8 +320,10 @@ impl DelimiterRules {
 /// Builder for [`DelimiterRules`].
 #[derive(Default)]
 pub struct DelimiterRulesBuilder {
-    allow_leading_trailing_hyphens: Option<bool>,
-    allow_leading_trailing_underscores: Option<bool>,
+    allow_leading_hyphens: Option<bool>,
+    allow_trailing_hyphens: Option<bool>,
+    allow_leading_underscores: Option<bool>,
+    allow_trailing_underscores: Option<bool>,
     allow_consecutive_hyphens: Option<bool>,
     allow_consecutive_underscores: Option<bool>,
     allow_adjacent_hyphen_underscore: Option<bool>,
@@ -315,15 +335,27 @@ impl DelimiterRulesBuilder {
         Self::default()
     }
 
-    /// Sets whether leading and trailing hyphens are allowed.
-    pub fn allow_leading_trailing_hyphens(mut self, allow: bool) -> Self {
-        self.allow_leading_trailing_hyphens = Some(allow);
+    /// Sets whether leading hyphens are allowed.
+    pub fn allow_leading_hyphens(mut self, allow: bool) -> Self {
+        self.allow_leading_hyphens = Some(allow);
         self
     }
 
-    /// Sets whether leading and trailing underscores are allowed.
-    pub fn allow_leading_trailing_underscores(mut self, allow: bool) -> Self {
-        self.allow_leading_trailing_underscores = Some(allow);
+    /// Sets whether trailing hyphens are allowed.
+    pub fn allow_trailing_hyphens(mut self, allow: bool) -> Self {
+        self.allow_trailing_hyphens = Some(allow);
+        self
+    }
+
+    /// Sets whether leading underscores are allowed.
+    pub fn allow_leading_underscores(mut self, allow: bool) -> Self {
+        self.allow_leading_underscores = Some(allow);
+        self
+    }
+
+    /// Sets whether trailing underscores are allowed.
+    pub fn allow_trailing_underscores(mut self, allow: bool) -> Self {
+        self.allow_trailing_underscores = Some(allow);
         self
     }
 
@@ -350,10 +382,10 @@ impl DelimiterRulesBuilder {
     /// Missing rules default to false.
     pub fn build(self) -> DelimiterRules {
         DelimiterRules {
-            allow_leading_trailing_hyphens: self.allow_leading_trailing_hyphens.unwrap_or(false),
-            allow_leading_trailing_underscores: self
-                .allow_leading_trailing_underscores
-                .unwrap_or(false),
+            allow_leading_hyphens: self.allow_leading_hyphens.unwrap_or(false),
+            allow_trailing_hyphens: self.allow_trailing_hyphens.unwrap_or(false),
+            allow_leading_underscores: self.allow_leading_underscores.unwrap_or(false),
+            allow_trailing_underscores: self.allow_trailing_underscores.unwrap_or(false),
             allow_consecutive_hyphens: self.allow_consecutive_hyphens.unwrap_or(false),
             allow_consecutive_underscores: self.allow_consecutive_underscores.unwrap_or(false),
             allow_adjacent_hyphen_underscore: self
@@ -379,7 +411,7 @@ mod tests {
     #[test]
     fn test_config_builder_custom_values() {
         let delimiter = DelimiterRulesBuilder::new()
-            .allow_leading_trailing_underscores(true)
+            .allow_leading_underscores(true)
             .allow_consecutive_hyphens(true)
             .build();
 
@@ -398,9 +430,7 @@ mod tests {
             Composition::AlphanumericHyphenUnderscore
         );
         assert!(config.delimiter_rules().allow_consecutive_hyphens());
-        assert!(config
-            .delimiter_rules()
-            .allow_leading_trailing_underscores());
+        assert!(config.delimiter_rules().allow_leading_underscores());
         assert!(config.allow_hyphen());
         assert!(config.allow_underscore());
     }
@@ -418,9 +448,11 @@ mod tests {
 
     #[test]
     fn test_delimiter_rules_new() {
-        let rules = DelimiterRules::new(true, false, true, false, true);
-        assert!(rules.allow_leading_trailing_hyphens());
-        assert!(!rules.allow_leading_trailing_underscores());
+        let rules = DelimiterRules::new(true, false, false, true, true, false, true);
+        assert!(rules.allow_leading_hyphens());
+        assert!(!rules.allow_trailing_hyphens());
+        assert!(!rules.allow_leading_underscores());
+        assert!(rules.allow_trailing_underscores());
         assert!(rules.allow_consecutive_hyphens());
         assert!(!rules.allow_consecutive_underscores());
         assert!(rules.allow_adjacent_hyphen_underscore());
@@ -429,8 +461,10 @@ mod tests {
     #[test]
     fn test_delimiter_rules_builder() {
         let builder = DelimiterRules::builder();
-        assert_eq!(builder.allow_leading_trailing_hyphens, None);
-        assert_eq!(builder.allow_leading_trailing_underscores, None);
+        assert_eq!(builder.allow_leading_hyphens, None);
+        assert_eq!(builder.allow_trailing_hyphens, None);
+        assert_eq!(builder.allow_leading_underscores, None);
+        assert_eq!(builder.allow_trailing_underscores, None);
         assert_eq!(builder.allow_consecutive_hyphens, None);
         assert_eq!(builder.allow_consecutive_underscores, None);
         assert_eq!(builder.allow_adjacent_hyphen_underscore, None);
@@ -439,8 +473,10 @@ mod tests {
     #[test]
     fn test_delimiter_rules_all_allowed() {
         let rules = DelimiterRules::all_allowed();
-        assert!(rules.allow_leading_trailing_hyphens());
-        assert!(rules.allow_leading_trailing_underscores());
+        assert!(rules.allow_leading_hyphens());
+        assert!(rules.allow_trailing_hyphens());
+        assert!(rules.allow_leading_underscores());
+        assert!(rules.allow_trailing_underscores());
         assert!(rules.allow_consecutive_hyphens());
         assert!(rules.allow_consecutive_underscores());
         assert!(rules.allow_adjacent_hyphen_underscore());
@@ -449,13 +485,15 @@ mod tests {
     #[test]
     fn test_delimiter_rules_builder_new() {
         let rules = DelimiterRulesBuilder::new()
-            .allow_leading_trailing_hyphens(true)
+            .allow_leading_hyphens(true)
             .allow_consecutive_underscores(true)
             .allow_adjacent_hyphen_underscore(true)
             .build();
 
-        assert!(rules.allow_leading_trailing_hyphens());
-        assert!(!rules.allow_leading_trailing_underscores());
+        assert!(rules.allow_leading_hyphens());
+        assert!(!rules.allow_trailing_hyphens());
+        assert!(!rules.allow_leading_underscores());
+        assert!(!rules.allow_trailing_underscores());
         assert!(!rules.allow_consecutive_hyphens());
         assert!(rules.allow_consecutive_underscores());
         assert!(rules.allow_adjacent_hyphen_underscore());
