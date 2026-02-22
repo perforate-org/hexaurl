@@ -176,16 +176,17 @@ pub(crate) fn decode_core<'a, const N: usize, const S: usize>(
     let dst_ptr = dst.as_mut_ptr();
     let chunks = full_chunks(N);
     let mut decoded_len = 0usize;
+    let mut rem_base = 0usize;
 
     // Process full 3-byte chunks first.
-    for chunk_idx in 0..chunks {
-        unsafe {
-            let s = src_ptr.add(chunk_idx * 3);
+    unsafe {
+        let mut s = src_ptr;
+        let mut r = dst_ptr;
+        for _ in 0..chunks {
             if *s == 0 {
                 return dst[..decoded_len].as_ref();
             }
 
-            let r = dst_ptr.add(chunk_idx * 4);
             let v0 = convert((*s) >> 2);
             let v1 = convert(((*s & MASK_TWO_BITS) << 4) | (*s.add(1) >> 4));
             let v2 = convert(((*s.add(1) & MASK_FOUR_BITS) << 2) | (*s.add(2) >> 6));
@@ -196,25 +197,27 @@ pub(crate) fn decode_core<'a, const N: usize, const S: usize>(
             *r.add(2) = v2;
             *r.add(3) = v3;
 
-            let base = chunk_idx * 4;
             if v0 != 0 {
-                decoded_len = base + 1;
+                decoded_len = rem_base + 1;
             }
             if v1 != 0 {
-                decoded_len = base + 2;
+                decoded_len = rem_base + 2;
             }
             if v2 != 0 {
-                decoded_len = base + 3;
+                decoded_len = rem_base + 3;
             }
             if v3 != 0 {
-                decoded_len = base + 4;
+                decoded_len = rem_base + 4;
             }
+
+            s = s.add(3);
+            r = r.add(4);
+            rem_base += 4;
         }
     }
 
     // Process remaining bytes without creating temporary slices.
     let rem = N % 3;
-    let rem_base = chunks * 4;
     if rem > 0 {
         unsafe {
             let s = src_ptr.add(chunks * 3);
