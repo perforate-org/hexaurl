@@ -111,6 +111,12 @@ pub fn validate_with_compiled_config<const N: usize>(
         return Ok(());
     }
 
+    // If compiled config has no restrictive delimiter rules for this composition,
+    // the delimiter second pass can be skipped.
+    if !compiled.needs_delimiter_pass() {
+        return Ok(());
+    }
+
     // Delimiter Rules Check (Pass 2, only if needed)
     // We only need to check if delimiters are present AND rules apply.
     // We reuse the logic from original implementation but only for the delimiter checks.
@@ -127,12 +133,11 @@ pub fn validate_with_compiled_config<const N: usize>(
         Composition::AlphanumericHyphen => {
             if has_hyphen {
                 // Check consecutive hyphens.
+                let rules = compiled.delimiter_rules();
                 let mut last_delim: Option<u8> = None;
                 for &b in bytes {
                     if b == b'-' {
-                        if last_delim == Some(b'-')
-                            && !compiled.delimiter_rules().allow_consecutive_hyphens()
-                        {
+                        if last_delim == Some(b'-') && !rules.allow_consecutive_hyphens() {
                             return Err(Error::ConsecutiveHyphens);
                         }
                         last_delim = Some(b'-');
@@ -144,12 +149,11 @@ pub fn validate_with_compiled_config<const N: usize>(
         }
         Composition::AlphanumericUnderscore => {
             if has_underscore {
+                let rules = compiled.delimiter_rules();
                 let mut last_delim: Option<u8> = None;
                 for &b in bytes {
                     if b == b'_' {
-                        if last_delim == Some(b'_')
-                            && !compiled.delimiter_rules().allow_consecutive_underscores()
-                        {
+                        if last_delim == Some(b'_') && !rules.allow_consecutive_underscores() {
                             return Err(Error::ConsecutiveUnderscores);
                         }
                         last_delim = Some(b'_');
@@ -160,26 +164,20 @@ pub fn validate_with_compiled_config<const N: usize>(
             }
         }
         Composition::AlphanumericHyphenUnderscore => {
+            let rules = compiled.delimiter_rules();
             let mut last_delim: Option<u8> = None;
             for &b in bytes {
                 match b {
                     b'-' | b'_' => {
                         if let Some(prev) = last_delim {
                             if prev == b {
-                                if b == b'-'
-                                    && !compiled.delimiter_rules().allow_consecutive_hyphens()
-                                {
+                                if b == b'-' && !rules.allow_consecutive_hyphens() {
                                     return Err(Error::ConsecutiveHyphens);
                                 }
-                                if b == b'_'
-                                    && !compiled.delimiter_rules().allow_consecutive_underscores()
-                                {
+                                if b == b'_' && !rules.allow_consecutive_underscores() {
                                     return Err(Error::ConsecutiveUnderscores);
                                 }
-                            } else if !compiled
-                                .delimiter_rules()
-                                .allow_adjacent_hyphen_underscore()
-                            {
+                            } else if !rules.allow_adjacent_hyphen_underscore() {
                                 return Err(Error::AdjacentHyphenUnderscore);
                             }
                         }
@@ -194,13 +192,14 @@ pub fn validate_with_compiled_config<const N: usize>(
     }
 
     // Validate leading/trailing delimiter characters.
-    if (input.starts_with('-') && !compiled.delimiter_rules().allow_leading_hyphens())
-        || (input.ends_with('-') && !compiled.delimiter_rules().allow_trailing_hyphens())
+    let rules = compiled.delimiter_rules();
+    if (input.starts_with('-') && !rules.allow_leading_hyphens())
+        || (input.ends_with('-') && !rules.allow_trailing_hyphens())
     {
         return Err(Error::LeadingTrailingHyphen);
     }
-    if (input.starts_with('_') && !compiled.delimiter_rules().allow_leading_underscores())
-        || (input.ends_with('_') && !compiled.delimiter_rules().allow_trailing_underscores())
+    if (input.starts_with('_') && !rules.allow_leading_underscores())
+        || (input.ends_with('_') && !rules.allow_trailing_underscores())
     {
         return Err(Error::LeadingTrailingUnderscore);
     }

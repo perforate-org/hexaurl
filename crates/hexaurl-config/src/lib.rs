@@ -70,6 +70,7 @@ pub struct Config<const N: usize> {
     delimiter_rules: DelimiterRules,
     allow_hyphen: bool,
     allow_underscore: bool,
+    needs_delimiter_pass: bool,
 }
 
 impl<const N: usize> Config<N> {
@@ -117,6 +118,11 @@ impl<const N: usize> Config<N> {
     /// Whether underscore is allowed by composition.
     pub fn allow_underscore(&self) -> bool {
         self.allow_underscore
+    }
+
+    /// Whether delimiter checks require a second pass.
+    pub fn needs_delimiter_pass(&self) -> bool {
+        self.needs_delimiter_pass
     }
 }
 
@@ -203,6 +209,28 @@ impl<const N: usize> ConfigBuilder<N> {
             Composition::AlphanumericUnderscore => (false, true),
             Composition::AlphanumericHyphenUnderscore => (true, true),
         };
+        let needs_delimiter_pass = match self.composition {
+            Composition::Alphanumeric => false,
+            Composition::AlphanumericHyphen => {
+                !(delimiter_rules.allow_leading_hyphens()
+                    && delimiter_rules.allow_trailing_hyphens()
+                    && delimiter_rules.allow_consecutive_hyphens())
+            }
+            Composition::AlphanumericUnderscore => {
+                !(delimiter_rules.allow_leading_underscores()
+                    && delimiter_rules.allow_trailing_underscores()
+                    && delimiter_rules.allow_consecutive_underscores())
+            }
+            Composition::AlphanumericHyphenUnderscore => {
+                !(delimiter_rules.allow_leading_hyphens()
+                    && delimiter_rules.allow_trailing_hyphens()
+                    && delimiter_rules.allow_leading_underscores()
+                    && delimiter_rules.allow_trailing_underscores()
+                    && delimiter_rules.allow_consecutive_hyphens()
+                    && delimiter_rules.allow_consecutive_underscores()
+                    && delimiter_rules.allow_adjacent_hyphen_underscore())
+            }
+        };
 
         Ok(Config {
             min_length: self.min_length,
@@ -211,6 +239,7 @@ impl<const N: usize> ConfigBuilder<N> {
             delimiter_rules,
             allow_hyphen,
             allow_underscore,
+            needs_delimiter_pass,
         })
     }
 }
