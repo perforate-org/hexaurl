@@ -1,7 +1,7 @@
 #![cfg_attr(feature = "nightly", feature(test))]
 
 use candid::Principal;
-use hexaurl::{validate::validate, HexaUrl};
+use hexaurl::{HexaUrl, validate::validate};
 use ic_cdk_macros::*;
 use ic_stable_structures::{
     memory_manager::{MemoryId, MemoryManager, VirtualMemory},
@@ -23,6 +23,28 @@ static MAP_KEYS: Lazy<Vec<&str>> = Lazy::new(|| {
         .collect()
 });
 
+struct HeapActors {
+    by_hex: BTreeMap<HexaUrl, Principal>,
+    by_plain: BTreeMap<String, Principal>,
+}
+
+impl HeapActors {
+    fn new() -> Self {
+        let mut by_hex = BTreeMap::new();
+        let mut by_plain = BTreeMap::new();
+
+        for key in MAP_KEYS.iter().copied() {
+            let lower = key.to_ascii_lowercase();
+            let hex =
+                HexaUrl::new(key).expect("pre-generated list must contain only valid HexaUrl keys");
+            by_hex.insert(hex, Principal::anonymous());
+            by_plain.insert(lower, Principal::anonymous());
+        }
+
+        Self { by_hex, by_plain }
+    }
+}
+
 thread_local! {
     static MEMORY_MANAGER: RefCell<MemoryManager<DefaultMemoryImpl>> =
         RefCell::new(MemoryManager::init(DefaultMemoryImpl::default()));
@@ -39,41 +61,23 @@ thread_local! {
         )
     );
 
-    pub static ACTORS_HEXAURL: RefCell<BTreeMap<HexaUrl, Principal>> = const { RefCell::new(BTreeMap::new()) };
-    pub static ACTORS_STRING: RefCell<BTreeMap<String, Principal>> = const { RefCell::new(BTreeMap::new()) };
-}
-
-#[init]
-fn init() {
-    for key in MAP_KEYS.iter().copied() {
-        let str = key.to_ascii_lowercase();
-        let hex = HexaUrl::new(key).unwrap();
-        ACTORS_HEXAURL.with(|actors| actors.borrow_mut().insert(hex, Principal::anonymous()));
-        ACTORS_STRING.with(|actors| {
-            actors
-                .borrow_mut()
-                .insert(str.clone(), Principal::anonymous())
-        });
-        STABLE_ACTORS_HEXAURL
-            .with(|actors| actors.borrow_mut().insert(hex, Principal::anonymous()));
-        STABLE_ACTORS_STRING.with(|actors| actors.borrow_mut().insert(str, Principal::anonymous()));
-    }
+    pub static HEAP_ACTORS: RefCell<HeapActors> = RefCell::new(HeapActors::new());
 }
 
 #[query]
 fn get_actor_by_hex(input: HexaUrl) -> Option<Principal> {
-    ACTORS_HEXAURL.with(|actors| actors.borrow().get(&input).copied())
+    HEAP_ACTORS.with(|actors| actors.borrow().by_hex.get(&input).copied())
 }
 
 #[query]
 fn get_actor_by_hex_string(input: String) -> Option<Principal> {
     let key = HexaUrl::new_quick(&input).ok()?;
-    ACTORS_HEXAURL.with(|actors| actors.borrow().get(&key).copied())
+    HEAP_ACTORS.with(|actors| actors.borrow().by_hex.get(&key).copied())
 }
 
 #[query]
 fn get_actor_by_plain_string(input: String) -> Option<Principal> {
-    ACTORS_STRING.with(|actors| actors.borrow().get(&input).copied())
+    HEAP_ACTORS.with(|actors| actors.borrow().by_plain.get(&input).copied())
 }
 
 #[query]
@@ -94,19 +98,19 @@ fn get_actor_stable_by_plain_string(input: String) -> Option<Principal> {
 
 #[update]
 fn insert_actor_by_hex(input: (HexaUrl, Principal)) -> Option<Principal> {
-    ACTORS_HEXAURL.with(|actors| actors.borrow_mut().insert(input.0, input.1))
+    HEAP_ACTORS.with(|actors| actors.borrow_mut().by_hex.insert(input.0, input.1))
 }
 
 #[update]
 fn insert_actor_by_hex_string(input: (String, Principal)) -> Option<Principal> {
     let key = HexaUrl::new(&input.0).ok()?;
-    ACTORS_HEXAURL.with(|actors| actors.borrow_mut().insert(key, input.1))
+    HEAP_ACTORS.with(|actors| actors.borrow_mut().by_hex.insert(key, input.1))
 }
 
 #[update]
 fn insert_actor_by_plain_string(input: (String, Principal)) -> Option<Principal> {
     validate::<16>(&input.0).ok()?;
-    ACTORS_STRING.with(|actors| actors.borrow_mut().insert(input.0, input.1))
+    HEAP_ACTORS.with(|actors| actors.borrow_mut().by_plain.insert(input.0, input.1))
 }
 
 #[update]

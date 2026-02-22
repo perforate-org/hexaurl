@@ -57,7 +57,9 @@ mod benches {
 
     #[bench]
     fn len_hexaurl(b: &mut Bencher) {
-        let value = unsafe { HexaUrl::new_unchecked(MEDIUM_INPUT) }.as_bytes().to_owned();
+        let value = unsafe { HexaUrl::new_unchecked(MEDIUM_INPUT) }
+            .as_bytes()
+            .to_owned();
         b.iter(|| {
             let value = unsafe { HexaUrl::from_slice(black_box(&value)) };
             black_box(value.len())
