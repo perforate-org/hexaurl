@@ -25,13 +25,67 @@ mod benches {
         encode::{encode, encode_quick, encode_unchecked},
         HexaUrl,
     };
-    use hexaurl_validate::validate;
+    use hexaurl_validate::{
+        config::{Composition, Config, DelimiterRules},
+        validate, validate_for_lookup, validate_with_compiled_config, validate_with_config,
+    };
     use once_cell::sync::Lazy;
     use std::collections::{BTreeMap, HashMap};
 
     const SHORT_INPUT: &str = "hero";
     const MEDIUM_INPUT: &str = "fancy-champ";
     const LONG_INPUT: &str = "ultimate-august-champ";
+    const DELIM_HEAVY_HYPHEN: &str = "a-a-a-a-a-a-a-a";
+    const DELIM_HEAVY_UNDERSCORE: &str = "a_a_a_a_a_a_a_a";
+    const DELIM_MIXED: &str = "a-_a-_a-_a-_a";
+    const ERROR_INVALID_CHAR: &str = "bad.input.value";
+    const ERROR_CONSEC_HYPHEN: &str = "bad--input--value";
+    const ERROR_CONSEC_UNDERSCORE: &str = "bad__input__value";
+
+    static CFG_ALNUM: Lazy<Config<16>> = Lazy::new(|| {
+        Config::<16>::builder()
+            .composition(Composition::Alphanumeric)
+            .build()
+            .unwrap()
+    });
+    static CFG_ALNUM_HYPHEN: Lazy<Config<16>> = Lazy::new(|| {
+        Config::<16>::builder()
+            .composition(Composition::AlphanumericHyphen)
+            .build()
+            .unwrap()
+    });
+    static CFG_ALNUM_UNDERSCORE: Lazy<Config<16>> = Lazy::new(|| {
+        Config::<16>::builder()
+            .composition(Composition::AlphanumericUnderscore)
+            .build()
+            .unwrap()
+    });
+    static CFG_ALNUM_BOTH: Lazy<Config<16>> = Lazy::new(|| {
+        Config::<16>::builder()
+            .composition(Composition::AlphanumericHyphenUnderscore)
+            .build()
+            .unwrap()
+    });
+    static CFG_STRICT_HYPHEN: Lazy<Config<16>> = Lazy::new(|| {
+        Config::<16>::builder()
+            .composition(Composition::AlphanumericHyphen)
+            .delimiter(Some(DelimiterRules::new(false, false, false, false, false)))
+            .build()
+            .unwrap()
+    });
+    static CFG_STRICT_UNDERSCORE: Lazy<Config<16>> = Lazy::new(|| {
+        Config::<16>::builder()
+            .composition(Composition::AlphanumericUnderscore)
+            .delimiter(Some(DelimiterRules::new(false, false, false, false, false)))
+            .build()
+            .unwrap()
+    });
+    static COMPILED_CFG_ALNUM_HYPHEN: Lazy<Config<16>> = Lazy::new(|| *CFG_ALNUM_HYPHEN);
+    static COMPILED_CFG_ALNUM_BOTH: Lazy<Config<16>> = Lazy::new(|| *CFG_ALNUM_BOTH);
+    static COMPILED_CFG_ALNUM: Lazy<Config<16>> = Lazy::new(|| *CFG_ALNUM);
+    static COMPILED_CFG_ALNUM_UNDERSCORE: Lazy<Config<16>> = Lazy::new(|| *CFG_ALNUM_UNDERSCORE);
+    static COMPILED_CFG_STRICT_HYPHEN: Lazy<Config<16>> = Lazy::new(|| *CFG_STRICT_HYPHEN);
+    static COMPILED_CFG_STRICT_UNDERSCORE: Lazy<Config<16>> = Lazy::new(|| *CFG_STRICT_UNDERSCORE);
 
     static MAP_KEYS: Lazy<Vec<&str>> = Lazy::new(|| {
         include_str!("list.txt")
@@ -428,6 +482,133 @@ mod benches {
     #[bench]
     fn validate_long(b: &mut Bencher) {
         b.iter(|| validate::<16>(black_box(LONG_INPUT)));
+    }
+
+    // Validation benchmarks: delimiter-heavy workload
+    #[bench]
+    fn validate_delimiter_heavy_hyphen(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box(DELIM_HEAVY_HYPHEN),
+                black_box(&*COMPILED_CFG_ALNUM_HYPHEN),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_delimiter_heavy_underscore(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box(DELIM_HEAVY_UNDERSCORE),
+                black_box(&*COMPILED_CFG_ALNUM_UNDERSCORE),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_delimiter_heavy_mixed(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(black_box(DELIM_MIXED), black_box(&*COMPILED_CFG_ALNUM_BOTH))
+        });
+    }
+
+    // Validation benchmarks: error-heavy workload
+    #[bench]
+    fn validate_error_invalid_char(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box(ERROR_INVALID_CHAR),
+                black_box(&*COMPILED_CFG_ALNUM_HYPHEN),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_error_consecutive_hyphen(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box(ERROR_CONSEC_HYPHEN),
+                black_box(&*COMPILED_CFG_STRICT_HYPHEN),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_error_consecutive_underscore(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box(ERROR_CONSEC_UNDERSCORE),
+                black_box(&*COMPILED_CFG_STRICT_UNDERSCORE),
+            )
+        });
+    }
+
+    // Validation benchmarks: composition-specific workload
+    #[bench]
+    fn validate_comp_alnum(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(black_box("abc123xyz"), black_box(&*COMPILED_CFG_ALNUM))
+        });
+    }
+
+    #[bench]
+    fn validate_comp_alnum_hyphen(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box("abc-123-xyz"),
+                black_box(&*COMPILED_CFG_ALNUM_HYPHEN),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_comp_alnum_underscore(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box("abc_123_xyz"),
+                black_box(&*COMPILED_CFG_ALNUM_UNDERSCORE),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_comp_alnum_both(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_config::<16>(
+                black_box("abc-123_xyz"),
+                black_box(&*COMPILED_CFG_ALNUM_BOTH),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_compiled_delimiter_heavy_hyphen(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_compiled_config::<16>(
+                black_box(DELIM_HEAVY_HYPHEN),
+                black_box(&*COMPILED_CFG_ALNUM_HYPHEN),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_compiled_delimiter_heavy_mixed(b: &mut Bencher) {
+        b.iter(|| {
+            validate_with_compiled_config::<16>(
+                black_box(DELIM_MIXED),
+                black_box(&*COMPILED_CFG_ALNUM_BOTH),
+            )
+        });
+    }
+
+    #[bench]
+    fn validate_lookup_safe_short(b: &mut Bencher) {
+        b.iter(|| validate_for_lookup::<16>(black_box(SHORT_INPUT)));
+    }
+
+    #[bench]
+    fn validate_lookup_safe_medium(b: &mut Bencher) {
+        b.iter(|| validate_for_lookup::<16>(black_box(MEDIUM_INPUT)));
     }
 
     // Encoding benchmarks

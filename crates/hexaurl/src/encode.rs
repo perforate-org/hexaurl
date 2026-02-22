@@ -38,7 +38,8 @@ const fn calc_str_len(n: usize) -> usize {
 /// ```
 #[inline]
 pub fn encode<const N: usize>(input: &str) -> Result<[u8; N], Error> {
-    encode_with_config::<N>(input, Config::default())
+    let config = Config::<N>::default();
+    encode_with_config::<N>(input, &config)
 }
 
 /// Encodes the input string into a HexaURL representation using a custom validation configuration.
@@ -56,7 +57,10 @@ pub fn encode<const N: usize>(input: &str) -> Result<[u8; N], Error> {
 /// - `Ok([u8; N])` containing the encoded data if the input is valid.
 /// - `Err(Error)` if validation fails.
 #[inline]
-pub fn encode_with_config<const N: usize>(input: &str, config: Config) -> Result<[u8; N], Error> {
+pub fn encode_with_config<const N: usize>(
+    input: &str,
+    config: &Config<N>,
+) -> Result<[u8; N], Error> {
     encode_core_validated_with_config::<N>(input, config)
 }
 
@@ -185,35 +189,23 @@ fn encode_core_minimal_validated<const N: usize>(input: &str) -> Result<[u8; N],
 #[inline(always)]
 fn encode_core_validated_with_config<const N: usize>(
     input: &str,
-    config: Config,
+    config: &Config<N>,
 ) -> Result<[u8; N], Error> {
     let len = input.len();
 
-    let effective_max = config
-        .max_length()
-        .map(|max| core::cmp::min(max, calc_str_len(N)))
-        .unwrap_or(calc_str_len(N));
-
     if let Some(min) = config.min_length() {
-        if min > effective_max {
-            return Err(Error::InvalidConfig(effective_max, min));
-        }
         if len < min {
             return Err(Error::StringTooShort(min));
         }
     }
 
-    if len > effective_max {
-        return Err(Error::StringTooLong(effective_max));
+    if len > config.effective_max() {
+        return Err(Error::StringTooLong(config.effective_max()));
     }
 
-    let delimiter_rules = config.delimiter().unwrap_or_default();
-    let (allow_hyphen, allow_underscore) = match config.composition() {
-        Composition::Alphanumeric => (false, false),
-        Composition::AlphanumericHyphen => (true, false),
-        Composition::AlphanumericUnderscore => (false, true),
-        Composition::AlphanumericHyphenUnderscore => (true, true),
-    };
+    let delimiter_rules = config.delimiter_rules();
+    let allow_hyphen = config.allow_hyphen();
+    let allow_underscore = config.allow_underscore();
 
     encode_core_validated_inner::<N>(
         input.as_bytes(),
@@ -585,8 +577,8 @@ mod tests {
     #[test]
     fn test_encode_with_config() {
         let input = "world";
-        let config = Config::default();
-        let encoded = encode_with_config::<16>(input, config).unwrap();
+        let config = Config::<16>::default();
+        let encoded = encode_with_config::<16>(input, &config).unwrap();
         assert_eq!(encoded.len(), 16);
     }
 
@@ -631,8 +623,8 @@ mod tests {
     #[test]
     fn test_encode_with_config_non16() {
         let input = "world";
-        let config = Config::default();
-        let encoded = encode_with_config::<12>(input, config).unwrap();
+        let config = Config::<12>::default();
+        let encoded = encode_with_config::<12>(input, &config).unwrap();
         assert_eq!(encoded.len(), 12);
     }
 
@@ -648,19 +640,19 @@ mod tests {
     #[test]
     fn test_encode_delimiter_error_precedence() {
         let input = "a-_😃";
-        let config = Config::builder()
+        let config = Config::<16>::builder()
             .composition(hexaurl_config::Composition::AlphanumericHyphenUnderscore)
             .build()
             .unwrap();
-        let res = encode_with_config::<16>(input, config);
+        let res = encode_with_config::<16>(input, &config);
         assert_eq!(res, Err(Error::InvalidCharacter));
     }
 
     #[test]
     fn test_encode_consecutive_hyphens_error() {
         let input = "--a";
-        let config = Config::default();
-        let res = encode_with_config::<16>(input, config);
+        let config = Config::<16>::default();
+        let res = encode_with_config::<16>(input, &config);
         assert_eq!(res, Err(Error::ConsecutiveHyphens));
     }
 }

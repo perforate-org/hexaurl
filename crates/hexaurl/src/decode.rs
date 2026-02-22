@@ -25,7 +25,8 @@ use std::str;
 /// ```
 #[inline]
 pub fn decode<const N: usize, const S: usize>(bytes: &[u8; N]) -> Result<String, Error> {
-    decode_with_config::<N, S>(bytes, Config::default())
+    let config = Config::<N>::default();
+    decode_with_config::<N, S>(bytes, &config)
 }
 
 /// Decodes a slice of HexaURL-encoded bytes into a string using a custom validation configuration.
@@ -42,7 +43,7 @@ pub fn decode<const N: usize, const S: usize>(bytes: &[u8; N]) -> Result<String,
 #[inline]
 pub fn decode_with_config<const N: usize, const S: usize>(
     bytes: &[u8; N],
-    config: Config,
+    config: &Config<N>,
 ) -> Result<String, Error> {
     let mut dst = [0u8; S];
     let res = decode_into_with_config::<N, S>(bytes, &mut dst, config)?;
@@ -57,7 +58,8 @@ pub fn decode_into<'a, const N: usize, const S: usize>(
     bytes: &[u8; N],
     dst: &'a mut [u8; S],
 ) -> Result<&'a str, Error> {
-    decode_into_with_config::<N, S>(bytes, dst, Config::default())
+    let config = Config::<N>::default();
+    decode_into_with_config::<N, S>(bytes, dst, &config)
 }
 
 /// Decodes into a caller-provided buffer using a custom validation configuration.
@@ -67,7 +69,7 @@ pub fn decode_into<'a, const N: usize, const S: usize>(
 pub fn decode_into_with_config<'a, const N: usize, const S: usize>(
     bytes: &[u8; N],
     dst: &'a mut [u8; S],
-    config: Config,
+    config: &Config<N>,
 ) -> Result<&'a str, Error> {
     let res = decode_core::<N, S>(bytes, dst);
     // SAFETY: decode_core only emits ASCII bytes from the lookup table, which are always valid UTF-8.
@@ -251,10 +253,10 @@ mod tests {
     #[test]
     fn test_encode_and_decode_with_config() {
         let original = "Test-Config";
-        let config = hexaurl_validate::config::Config::default();
+        let config = hexaurl_validate::config::Config::<16>::default();
         let encoded: [u8; 16] = encode(original).expect("Encoding failed");
         let decoded =
-            decode_with_config::<16, 21>(&encoded, config).expect("Decoding with config failed");
+            decode_with_config::<16, 21>(&encoded, &config).expect("Decoding with config failed");
         assert_eq!(original.to_ascii_lowercase(), decoded);
     }
 

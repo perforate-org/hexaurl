@@ -78,13 +78,13 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     /// - The input fails validation according to the provided configuration.
     /// - The encoded result exceeds the fixed size limits.
     #[inline]
-    pub fn new_with_config(input: &str, config: Config) -> Result<Self, Error> {
+    pub fn new_with_config(input: &str, config: &Config<N>) -> Result<Self, Error> {
         Ok(Self(encode_with_config(input, config)?))
     }
 
     /// Encodes the input string with minimal validation and creates a new `HexaUrlCore`.
     ///
-    /// This method uses the minimal validation rules provided by [`Config::minimal()`].
+    /// This method uses minimal validation rules.
     ///
     /// # Arguments
     ///
@@ -153,7 +153,7 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     /// - Decoding fails according to the provided configuration.
     /// - The decoded string is not valid UTF-8.
     #[inline]
-    pub fn decode_with_config(&self, config: Config) -> Result<String, Error> {
+    pub fn decode_with_config(&self, config: &Config<N>) -> Result<String, Error> {
         decode_with_config::<N, S>(&self.0, config)
     }
 
@@ -172,7 +172,7 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     pub fn decode_into_with_config<'a>(
         &self,
         dst: &'a mut [u8; S],
-        config: Config,
+        config: &Config<N>,
     ) -> Result<&'a str, Error> {
         decode_into_with_config::<N, S>(&self.0, dst, config)
     }
@@ -550,8 +550,8 @@ impl<'a, const N: usize, const S: usize> arbitrary::Arbitrary<'a> for HexaUrlCor
 
         let mut dst = [0; S];
         let str = unsafe { str::from_utf8_unchecked(decode_core(&bytes, &mut dst)) };
-        validate_with_config::<N>(str, Config::minimal())
-            .map_err(|_| arbitrary::Error::IncorrectFormat)?;
+        let config = Config::<N>::minimal();
+        validate_with_config::<N>(str, &config).map_err(|_| arbitrary::Error::IncorrectFormat)?;
 
         Ok(Self(bytes))
     }
@@ -698,9 +698,9 @@ mod tests {
     #[test]
     fn test_new_with_config() {
         let input = "hello";
-        let config = Config::minimal();
-        let hexaurl = HexaUrlCore::<16, 21>::new_with_config(input, config).unwrap();
-        let decoded = hexaurl.decode_with_config(config).unwrap();
+        let config = Config::<16>::minimal();
+        let hexaurl = HexaUrlCore::<16, 21>::new_with_config(input, &config).unwrap();
+        let decoded = hexaurl.decode_with_config(&config).unwrap();
         assert_eq!(input, decoded);
     }
 
@@ -902,7 +902,8 @@ mod tests {
         fn test_arbitrary() {
             fn prop(u: &mut arbitrary::Unstructured<'_>) -> arbitrary::Result<()> {
                 let hexaurl = HexaUrlCore::<16, 21>::arbitrary(u)?;
-                let decoded = hexaurl.decode_with_config(Config::minimal()).unwrap();
+                let config = Config::<16>::minimal();
+                let decoded = hexaurl.decode_with_config(&config).unwrap();
                 assert_eq!(hexaurl.to_string(), decoded);
                 Ok(())
             }
