@@ -9,6 +9,9 @@ All notable changes to this project will be documented in this file.
 - `hexaurl-config`:
   - `Config` is now a compiled, size-typed config: `Config<const N: usize>`.
   - `Config` is built directly via `Config::<N>::builder().build()`.
+  - `DelimiterRules` leading/trailing controls are split:
+    - removed `allow_leading_trailing_hyphens` / `allow_leading_trailing_underscores`
+    - added `allow_leading_hyphens`, `allow_trailing_hyphens`, `allow_leading_underscores`, `allow_trailing_underscores`
 
 - `hexaurl-validate`:
   - `validate_with_config` now accepts `&hexaurl_config::Config<N>`.
