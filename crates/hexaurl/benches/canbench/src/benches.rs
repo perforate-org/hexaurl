@@ -3,11 +3,17 @@ extern crate test;
 use super::*;
 use canbench_rs::bench;
 use hexaurl::config::{Composition, Config, DelimiterRules};
+use hexaurl::encode_with_config;
 use hexaurl::validate::validate_with_compiled_config;
 use once_cell::sync::Lazy;
 use test::black_box;
 
 const INPUT: &str = "hello-world";
+const ENCODE_HYPHEN_STRICT_OK: &str = "ab-cd-ef-gh";
+const ENCODE_MIXED_STRICT_OK: &str = "ab-cd_ef-gh_ij";
+const ENCODE_MIXED_PERMISSIVE_OK: &str = "ab-_cd-_ef-_gh";
+const ENCODE_ERROR_ADJACENT_MIXED: &str = "ab-_cd-ef-gh";
+const ENCODE_ERROR_CONSEC_HYPHEN: &str = "ab--cd-ef-gh";
 const VALIDATE_SHORT_OK: &str = "abc";
 const VALIDATE_MEDIUM_OK: &str = "hello-world_12";
 const VALIDATE_LONG_OK: &str = "abcd-efgh_ijkl-mnop";
@@ -73,6 +79,51 @@ fn bench_encode_unchecked() {
         let res = HexaUrl::new_unchecked(black_box(INPUT));
         black_box(res);
     }
+}
+
+#[bench]
+fn bench_encode_with_config_hyphen_strict_ok() {
+    let res = encode_with_config::<16>(
+        black_box(ENCODE_HYPHEN_STRICT_OK),
+        black_box(&*CFG_HYPHEN_STRICT),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_encode_with_config_mixed_strict_ok() {
+    let res = encode_with_config::<16>(
+        black_box(ENCODE_MIXED_STRICT_OK),
+        black_box(&*CFG_HYPHEN_UNDERSCORE_STRICT),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_encode_with_config_mixed_permissive_ok() {
+    let res = encode_with_config::<16>(
+        black_box(ENCODE_MIXED_PERMISSIVE_OK),
+        black_box(&*CFG_HYPHEN_UNDERSCORE_PERMISSIVE),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_encode_with_config_error_adjacent_mixed_strict() {
+    let res = encode_with_config::<16>(
+        black_box(ENCODE_ERROR_ADJACENT_MIXED),
+        black_box(&*CFG_HYPHEN_UNDERSCORE_STRICT),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_encode_with_config_error_consecutive_hyphen_strict() {
+    let res = encode_with_config::<16>(
+        black_box(ENCODE_ERROR_CONSEC_HYPHEN),
+        black_box(&*CFG_HYPHEN_STRICT),
+    );
+    let _ = black_box(res);
 }
 
 #[bench]
