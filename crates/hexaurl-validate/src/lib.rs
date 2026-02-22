@@ -73,18 +73,47 @@ pub fn validate_with_compiled_config<const N: usize>(
     let mut has_underscore = false;
 
     let mut chunks = bytes.chunks_exact(8);
-    for chunk in chunks.by_ref() {
-        let val = u64::from_le_bytes(chunk.try_into().unwrap());
-        let (valid, h, u) = validate_swar::validate_chunk(
-            val,
-            compiled.allow_hyphen(),
-            compiled.allow_underscore(),
-        );
-        if !valid {
-            return Err(Error::InvalidCharacter);
+    match composition {
+        Composition::Alphanumeric => {
+            for chunk in chunks.by_ref() {
+                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+                let (valid, _, _) = validate_swar::validate_chunk_alnum(val);
+                if !valid {
+                    return Err(Error::InvalidCharacter);
+                }
+            }
         }
-        has_hyphen |= h;
-        has_underscore |= u;
+        Composition::AlphanumericHyphen => {
+            for chunk in chunks.by_ref() {
+                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+                let (valid, h, _) = validate_swar::validate_chunk_hyphen(val);
+                if !valid {
+                    return Err(Error::InvalidCharacter);
+                }
+                has_hyphen |= h;
+            }
+        }
+        Composition::AlphanumericUnderscore => {
+            for chunk in chunks.by_ref() {
+                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+                let (valid, _, u) = validate_swar::validate_chunk_underscore(val);
+                if !valid {
+                    return Err(Error::InvalidCharacter);
+                }
+                has_underscore |= u;
+            }
+        }
+        Composition::AlphanumericHyphenUnderscore => {
+            for chunk in chunks.by_ref() {
+                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+                let (valid, h, u) = validate_swar::validate_chunk_both(val);
+                if !valid {
+                    return Err(Error::InvalidCharacter);
+                }
+                has_hyphen |= h;
+                has_underscore |= u;
+            }
+        }
     }
 
     for &b in chunks.remainder() {
@@ -227,7 +256,7 @@ pub fn validate_minimal_config<const N: usize>(input: &str) -> Result<(), Error>
     let mut chunks = input.as_bytes().chunks_exact(8);
     for chunk in chunks.by_ref() {
         let val = u64::from_le_bytes(chunk.try_into().unwrap());
-        let (valid, _, _) = validate_swar::validate_chunk(val, true, true);
+        let (valid, _, _) = validate_swar::validate_chunk_both(val);
         if !valid {
             return Err(Error::InvalidCharacter);
         }
