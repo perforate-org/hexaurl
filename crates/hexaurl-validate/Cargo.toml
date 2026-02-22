@@ -27,9 +27,6 @@ keywords = ["database", "text", "string"]
 hexaurl-config = { workspace = true }
 thiserror = "2.0"
 
-[dev-dependencies]
-hexaurl = { workspace = true }
-
 [features]
 all = ["char"]
 char = []

@@ -4,7 +4,7 @@
 //! to ensure all HexaURL values are within the valid range, while the unchecked functions assume the input
 //! is already valid for increased performance.
 
-use crate::{Error, MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS, utils::len};
+use crate::{utils::len, Error, MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS};
 use hexaurl_validate::{config::Config, validate_with_config};
 use std::{slice, str};
 
@@ -49,12 +49,11 @@ pub fn decode_with_config<const N: usize, const S: usize>(
     Ok(res)
 }
 
-/// This function performs decoding without validating whether the HexaURL values are within the
-/// valid range or whether the resulting bytes form a valid UTF-8 string. Use this function only
-/// when you are certain the input is valid to avoid undefined behavior.
+/// This function performs decoding without running HexaURL validation checks.
+/// It is faster than [`decode`] and [`decode_with_config`], but accepts any byte pattern.
 ///
-/// # Safety
-/// - The `bytes` slice must contain valid HexaURL-encoded data.
+/// If `bytes` does not contain a valid HexaURL payload, the returned string may be semantically
+/// incorrect for your application because delimiter/length/composition rules are not enforced.
 ///
 /// # Parameters
 /// - `bytes`: A slice of bytes containing HexaURL-encoded data.
@@ -76,7 +75,7 @@ pub fn decode_with_config<const N: usize, const S: usize>(
 pub fn decode_unchecked<const N: usize, const S: usize>(bytes: &[u8; N]) -> String {
     let mut res: [u8; S] = [0; S];
     let slice = decode_core::<N, S>(bytes, &mut res);
-    // SAFETY: The function assumes the input is valid and does not contain any null bytes.
+    // SAFETY: decode_core only emits ASCII bytes from the lookup table, which are always valid UTF-8.
     unsafe { str::from_utf8_unchecked(slice) }.to_owned()
 }
 

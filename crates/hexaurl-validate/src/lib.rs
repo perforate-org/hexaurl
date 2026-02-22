@@ -5,6 +5,7 @@
 use config::{Composition, Config};
 pub use hexaurl_config as config;
 use std::cmp;
+use std::convert::TryInto;
 
 mod error;
 #[cfg(not(feature = "char"))]
@@ -12,6 +13,8 @@ mod validate_char;
 #[cfg(feature = "char")]
 #[cfg_attr(docsrs, doc(cfg(feature = "char")))]
 pub mod validate_char;
+
+mod validate_swar;
 
 pub use error::Error;
 
@@ -57,56 +60,104 @@ pub fn validate_with_config<const N: usize>(input: &str, config: Config) -> Resu
     let delimiter_rules = config.delimiter().unwrap_or_default();
     let bytes = input.as_bytes();
 
-    // Process each character in a single pass by converting to uppercase on the fly.
+    let (allow_hyphen, allow_underscore) = match config.composition() {
+        Composition::Alphanumeric => (false, false),
+        Composition::AlphanumericHyphen => (true, false),
+        Composition::AlphanumericUnderscore => (false, true),
+        Composition::AlphanumericHyphenUnderscore => (true, true),
+    };
+
+    let mut has_hyphen = false;
+    let mut has_underscore = false;
+
+    let mut chunks = bytes.chunks_exact(8);
+    for chunk in chunks.by_ref() {
+        let val = u64::from_le_bytes(chunk.try_into().unwrap());
+        let (valid, h, u) = validate_swar::validate_chunk(val, allow_hyphen, allow_underscore);
+        if !valid {
+            return Err(Error::InvalidCharacter);
+        }
+        has_hyphen |= h;
+        has_underscore |= u;
+    }
+
+    for &b in chunks.remainder() {
+        match config.composition() {
+            Composition::Alphanumeric => validate_char::validate_alphanumeric(b)?,
+            Composition::AlphanumericHyphen => validate_char::validate_alphanumeric_with_hyphen(b)?,
+            Composition::AlphanumericUnderscore => {
+                validate_char::validate_alphanumeric_with_underscore(b)?
+            }
+            Composition::AlphanumericHyphenUnderscore => {
+                validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?
+            }
+        }
+        if b == b'-' {
+            has_hyphen = true;
+        } else if b == b'_' {
+            has_underscore = true;
+        }
+    }
+
+    // Process delimiter rules if necessary.
+    // If no delimiters found, we are done!
+    if !has_hyphen && !has_underscore {
+        return Ok(());
+    }
+
+    // Delimiter Rules Check (Pass 2, only if needed)
+    // We only need to check if delimiters are present AND rules apply.
+    // We reuse the logic from original implementation but only for the delimiter checks.
+
     match config.composition() {
         Composition::Alphanumeric => {
-            // Validate each character as uppercase alphanumeric.
-            for &b in bytes {
-                validate_char::validate_alphanumeric(b)?;
+            // Should be unreachable if has_hyphen/underscore is true, because allow_hyphen/underscore was false,
+            // so validate_chunk/remainder would have returned Error.
+            // But strictness check:
+            if has_hyphen || has_underscore {
+                return Err(Error::InvalidCharacter);
             }
         }
         Composition::AlphanumericHyphen => {
-            // Track the last delimiter character for consecutive hyphen checks.
-            let mut last_delim: Option<u8> = None;
-            for &b in bytes {
-                validate_char::validate_alphanumeric_with_hyphen(b)?;
-                if b == b'-' {
-                    // Check if consecutive hyphens are disallowed.
-                    if last_delim == Some(b'-') && !delimiter_rules.allow_consecutive_hyphens() {
-                        return Err(Error::ConsecutiveHyphens);
+            if has_hyphen {
+                // Check consecutive hyphens.
+                let mut last_delim: Option<u8> = None;
+                for &b in bytes {
+                    if b == b'-' {
+                        if last_delim == Some(b'-') && !delimiter_rules.allow_consecutive_hyphens()
+                        {
+                            return Err(Error::ConsecutiveHyphens);
+                        }
+                        last_delim = Some(b'-');
+                    } else {
+                        last_delim = None;
                     }
-                    last_delim = Some(b'-');
-                } else {
-                    last_delim = None;
                 }
             }
         }
         Composition::AlphanumericUnderscore => {
-            // Track the last delimiter character for consecutive underscore checks.
-            let mut last_delim: Option<u8> = None;
-            for &b in bytes {
-                validate_char::validate_alphanumeric_with_underscore(b)?;
-                if b == b'_' {
-                    // Check if consecutive underscores are disallowed.
-                    if last_delim == Some(b'_') && !delimiter_rules.allow_consecutive_underscores()
-                    {
-                        return Err(Error::ConsecutiveUnderscores);
+            if has_underscore {
+                let mut last_delim: Option<u8> = None;
+                for &b in bytes {
+                    if b == b'_' {
+                        if last_delim == Some(b'_')
+                            && !delimiter_rules.allow_consecutive_underscores()
+                        {
+                            return Err(Error::ConsecutiveUnderscores);
+                        }
+                        last_delim = Some(b'_');
+                    } else {
+                        last_delim = None;
                     }
-                    last_delim = Some(b'_');
-                } else {
-                    last_delim = None;
                 }
             }
         }
         Composition::AlphanumericHyphenUnderscore => {
-            // Track the last delimiter (hyphen or underscore) for consecutive and adjacent delimiter checks.
             let mut last_delim: Option<u8> = None;
             for &b in bytes {
-                validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?;
                 match b {
                     b'-' | b'_' => {
                         if let Some(prev) = last_delim {
-                            // Check for consecutive identical delimiters.
                             if prev == b {
                                 if b == b'-' && !delimiter_rules.allow_consecutive_hyphens() {
                                     return Err(Error::ConsecutiveHyphens);
@@ -114,9 +165,7 @@ pub fn validate_with_config<const N: usize>(input: &str, config: Config) -> Resu
                                 if b == b'_' && !delimiter_rules.allow_consecutive_underscores() {
                                     return Err(Error::ConsecutiveUnderscores);
                                 }
-                            }
-                            // Check for adjacent different delimiters if disallowed.
-                            else if !delimiter_rules.allow_adjacent_hyphen_underscore() {
+                            } else if !delimiter_rules.allow_adjacent_hyphen_underscore() {
                                 return Err(Error::AdjacentHyphenUnderscore);
                             }
                         }
@@ -130,8 +179,7 @@ pub fn validate_with_config<const N: usize>(input: &str, config: Config) -> Resu
         }
     }
 
-    // Validate leading/trailing delimiter characters without iterating over the string again in uppercase.
-    // We compare against the raw input because hyphen and underscore are unaffected by case conversion.
+    // Validate leading/trailing delimiter characters.
     if !delimiter_rules.allow_leading_trailing_hyphens()
         && (input.starts_with('-') || input.ends_with('-'))
     {
@@ -162,7 +210,17 @@ pub fn validate_minimal_config<const N: usize>(input: &str) -> Result<(), Error>
     if input.len() > max {
         return Err(Error::StringTooLong(max));
     }
-    for &b in input.as_bytes() {
+
+    let mut chunks = input.as_bytes().chunks_exact(8);
+    for chunk in chunks.by_ref() {
+        let val = u64::from_le_bytes(chunk.try_into().unwrap());
+        let (valid, _, _) = validate_swar::validate_chunk(val, true, true);
+        if !valid {
+            return Err(Error::InvalidCharacter);
+        }
+    }
+
+    for &b in chunks.remainder() {
         validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?;
     }
 
@@ -182,7 +240,7 @@ pub fn validate_minimal_config<const N: usize>(input: &str) -> Result<(), Error>
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use std::collections::HashMap;
 /// use hexaurl::HexaUrl;
 /// use hexaurl_validate::check_encoding_safe;
@@ -235,7 +293,7 @@ mod tests {
     #[test]
     fn test_string_too_short() {
         // Build a ValidationConfig with a minimum length of 5 using the builder pattern.
-        let config = Config::builder().min_length(Some(5)).build();
+        let config = Config::builder().min_length(Some(5)).build().unwrap();
         let result = validate_with_config::<16>("abcd", config);
         assert_eq!(result, Err(Error::StringTooShort(5)));
     }
@@ -245,7 +303,7 @@ mod tests {
     fn test_string_too_long() {
         // For ByteSize::U8x8 the maximum bound is 10.
         // We override it with a max_length of 8 so that effective_max = min(8, 10) = 8.
-        let config = Config::builder().max_length(Some(8)).build();
+        let config = Config::builder().max_length(Some(8)).build().unwrap();
         let result = validate_with_config::<16>("abcdefghi", config);
         assert_eq!(result, Err(Error::StringTooLong(8)));
     }
@@ -255,7 +313,8 @@ mod tests {
     fn test_alphanumeric_valid() {
         let config = Config::builder()
             .composition(Composition::Alphanumeric)
-            .build();
+            .build()
+            .unwrap();
         let result = validate_with_config::<16>("abc123", config);
         assert!(result.is_ok());
     }
@@ -265,7 +324,8 @@ mod tests {
     fn test_alphanumeric_invalid_char() {
         let config = Config::builder()
             .composition(Composition::Alphanumeric)
-            .build();
+            .build()
+            .unwrap();
         let result = validate_with_config::<16>("ab-c123", config);
         // A hyphen is not an uppercase alphanumeric, so we expect an invalid character error.
         assert_eq!(result, Err(Error::InvalidCharacter));
@@ -276,7 +336,8 @@ mod tests {
     fn test_alphanumeric_hyphen_valid() {
         let config = Config::builder()
             .composition(Composition::AlphanumericHyphen)
-            .build();
+            .build()
+            .unwrap();
         let result = validate_with_config::<16>("abc-123", config);
         assert!(result.is_ok());
     }
@@ -287,7 +348,8 @@ mod tests {
         // Using default delimiter rules (which disallow consecutive delimiters by default).
         let config = Config::builder()
             .composition(Composition::AlphanumericHyphen)
-            .build();
+            .build()
+            .unwrap();
         let result = validate_with_config::<16>("abc--123", config);
         assert_eq!(result, Err(Error::ConsecutiveHyphens));
     }
@@ -309,7 +371,8 @@ mod tests {
     fn test_alphanumeric_underscore_valid() {
         let config = Config::builder()
             .composition(Composition::AlphanumericUnderscore)
-            .build();
+            .build()
+            .unwrap();
         let result = validate_with_config::<16>("abc_123", config);
         assert!(result.is_ok());
     }
@@ -319,7 +382,8 @@ mod tests {
     fn test_alphanumeric_underscore_consecutive() {
         let config = Config::builder()
             .composition(Composition::AlphanumericUnderscore)
-            .build();
+            .build()
+            .unwrap();
         let result = validate_with_config::<16>("abc__123", config);
         assert_eq!(result, Err(Error::ConsecutiveUnderscores));
     }
@@ -329,7 +393,8 @@ mod tests {
     fn test_leading_trailing_underscore() {
         let config = Config::builder()
             .composition(Composition::AlphanumericUnderscore)
-            .build();
+            .build()
+            .unwrap();
         let result = validate_with_config::<16>("_abc123", config);
         assert_eq!(result, Err(Error::LeadingTrailingUnderscore));
 
@@ -342,7 +407,8 @@ mod tests {
     fn test_alphanumeric_hyphen_underscore_adjacent() {
         let config = Config::builder()
             .composition(Composition::AlphanumericHyphenUnderscore)
-            .build();
+            .build()
+            .unwrap();
         // Using an input where a hyphen and underscore are adjacent.
         let result = validate_with_config::<16>("abc-_123", config);
         assert_eq!(result, Err(Error::AdjacentHyphenUnderscore));

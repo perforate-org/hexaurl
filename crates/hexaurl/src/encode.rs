@@ -5,10 +5,14 @@
 //! All functions return a fixed-size byte array containing the packed result.
 
 use crate::{Error, MASK_FOUR_BITS, MASK_TWO_BITS};
-use hexaurl_config::Config;
-use hexaurl_validate::{
-    check_encoding_safe, validate, validate_minimal_config, validate_with_config,
-};
+use hexaurl_config::{Composition, Config};
+use hexaurl_validate::check_encoding_safe;
+
+/// Calculates the maximum length of the input string based on the number of output bytes.
+#[inline(always)]
+const fn calc_str_len(n: usize) -> usize {
+    n * 4 / 3
+}
 
 /// Encodes the input string into a compact HexaURL representation using default validation rules.
 ///
@@ -34,10 +38,7 @@ use hexaurl_validate::{
 /// ```
 #[inline]
 pub fn encode<const N: usize>(input: &str) -> Result<[u8; N], Error> {
-    unsafe {
-        validate::<N>(input)?;
-        Ok(encode_core(input))
-    }
+    encode_with_config::<N>(input, Config::default())
 }
 
 /// Encodes the input string into a HexaURL representation using a custom validation configuration.
@@ -56,18 +57,12 @@ pub fn encode<const N: usize>(input: &str) -> Result<[u8; N], Error> {
 /// - `Err(Error)` if validation fails.
 #[inline]
 pub fn encode_with_config<const N: usize>(input: &str, config: Config) -> Result<[u8; N], Error> {
-    unsafe {
-        validate_with_config::<N>(input, config)?;
-        Ok(encode_core(input))
-    }
+    encode_core_validated_with_config::<N>(input, config)
 }
 
 /// Encodes the input string into a compact HexaURL representation using minimal validation rules.
 pub fn encode_minimal_config<const N: usize>(input: &str) -> Result<[u8; N], Error> {
-    unsafe {
-        validate_minimal_config::<N>(input)?;
-        Ok(encode_core(input))
-    }
+    encode_core_minimal_validated::<N>(input)
 }
 
 /// Performs a simple validation check before encoding the input string into HexaURL format.
@@ -157,6 +152,338 @@ const unsafe fn convert(byte: u8) -> u8 {
     unsafe { LOOKUP_TABLE.as_ptr().add(byte as usize).read() }
 }
 
+#[inline(always)]
+fn sixbit_value(byte: u8) -> Option<u8> {
+    if byte >= 128 {
+        return None;
+    }
+    let val = LOOKUP_TABLE[byte as usize];
+    if val == 0 {
+        None
+    } else {
+        Some(val)
+    }
+}
+
+#[inline(always)]
+fn encode_core_minimal_validated<const N: usize>(input: &str) -> Result<[u8; N], Error> {
+    if input.len() > calc_str_len(N) {
+        return Err(Error::StringTooLong(calc_str_len(N)));
+    }
+
+    encode_core_validated_inner::<N>(
+        input.as_bytes(),
+        true,
+        true,
+        hexaurl_config::DelimiterRules::default(),
+        None,
+        false,
+        false,
+    )
+}
+
+#[inline(always)]
+fn encode_core_validated_with_config<const N: usize>(
+    input: &str,
+    config: Config,
+) -> Result<[u8; N], Error> {
+    let len = input.len();
+
+    let effective_max = config
+        .max_length()
+        .map(|max| core::cmp::min(max, calc_str_len(N)))
+        .unwrap_or(calc_str_len(N));
+
+    if let Some(min) = config.min_length() {
+        if min > effective_max {
+            return Err(Error::InvalidConfig(effective_max, min));
+        }
+        if len < min {
+            return Err(Error::StringTooShort(min));
+        }
+    }
+
+    if len > effective_max {
+        return Err(Error::StringTooLong(effective_max));
+    }
+
+    let delimiter_rules = config.delimiter().unwrap_or_default();
+    let (allow_hyphen, allow_underscore) = match config.composition() {
+        Composition::Alphanumeric => (false, false),
+        Composition::AlphanumericHyphen => (true, false),
+        Composition::AlphanumericUnderscore => (false, true),
+        Composition::AlphanumericHyphenUnderscore => (true, true),
+    };
+
+    encode_core_validated_inner::<N>(
+        input.as_bytes(),
+        allow_hyphen,
+        allow_underscore,
+        delimiter_rules,
+        Some(config.composition()),
+        delimiter_rules.allow_consecutive_hyphens(),
+        delimiter_rules.allow_consecutive_underscores(),
+    )
+}
+
+#[inline(always)]
+fn encode_core_validated_inner<const N: usize>(
+    input: &[u8],
+    allow_hyphen: bool,
+    allow_underscore: bool,
+    delimiter_rules: hexaurl_config::DelimiterRules,
+    composition: Option<Composition>,
+    allow_consecutive_hyphens: bool,
+    allow_consecutive_underscores: bool,
+) -> Result<[u8; N], Error> {
+    let len = input.len();
+    let mut bytes = [0u8; N];
+
+    let mut first_byte: u8 = 0;
+    let mut last_byte: u8 = 0;
+    let mut pending_delim_error: Option<Error> = None;
+    let mut last_delim: Option<u8> = None;
+
+    let full_chunks = len / 4;
+    let remaining = len % 4;
+
+    for chunk_idx in 0..full_chunks {
+        let start = chunk_idx * 4;
+        let chunk = &input[start..start + 4];
+
+        if start == 0 {
+            first_byte = chunk[0];
+        }
+        last_byte = chunk[3];
+
+        let mut vals = [0u8; 4];
+        for (i, &b) in chunk.iter().enumerate() {
+            if b == b'-' {
+                if !allow_hyphen {
+                    return Err(Error::InvalidCharacter);
+                }
+            } else if b == b'_' && !allow_underscore {
+                return Err(Error::InvalidCharacter);
+            }
+
+            let Some(v) = sixbit_value(b) else {
+                return Err(Error::InvalidCharacter);
+            };
+            vals[i] = v;
+
+            if pending_delim_error.is_none() {
+                if let Some(comp) = composition {
+                    match comp {
+                        Composition::Alphanumeric => {}
+                        Composition::AlphanumericHyphen => {
+                            if b == b'-' {
+                                if last_delim == Some(b'-') && !allow_consecutive_hyphens {
+                                    pending_delim_error = Some(Error::ConsecutiveHyphens);
+                                }
+                                last_delim = Some(b'-');
+                            } else {
+                                last_delim = None;
+                            }
+                        }
+                        Composition::AlphanumericUnderscore => {
+                            if b == b'_' {
+                                if last_delim == Some(b'_') && !allow_consecutive_underscores {
+                                    pending_delim_error = Some(Error::ConsecutiveUnderscores);
+                                }
+                                last_delim = Some(b'_');
+                            } else {
+                                last_delim = None;
+                            }
+                        }
+                        Composition::AlphanumericHyphenUnderscore => match b {
+                            b'-' | b'_' => {
+                                if let Some(prev) = last_delim {
+                                    if prev == b {
+                                        if b == b'-' && !allow_consecutive_hyphens {
+                                            pending_delim_error = Some(Error::ConsecutiveHyphens);
+                                        }
+                                        if b == b'_' && !allow_consecutive_underscores {
+                                            pending_delim_error =
+                                                Some(Error::ConsecutiveUnderscores);
+                                        }
+                                    } else if !delimiter_rules.allow_adjacent_hyphen_underscore() {
+                                        pending_delim_error = Some(Error::AdjacentHyphenUnderscore);
+                                    }
+                                }
+                                last_delim = Some(b);
+                            }
+                            _ => {
+                                last_delim = None;
+                            }
+                        },
+                    }
+                }
+            } else if let Some(comp) = composition {
+                match comp {
+                    Composition::AlphanumericHyphen => {
+                        last_delim = if b == b'-' { Some(b'-') } else { None };
+                    }
+                    Composition::AlphanumericUnderscore => {
+                        last_delim = if b == b'_' { Some(b'_') } else { None };
+                    }
+                    Composition::AlphanumericHyphenUnderscore => {
+                        last_delim = match b {
+                            b'-' | b'_' => Some(b),
+                            _ => None,
+                        };
+                    }
+                    Composition::Alphanumeric => {}
+                }
+            }
+        }
+
+        let byte_idx = chunk_idx * 3;
+        let a = vals[0];
+        let b = vals[1];
+        let c = vals[2];
+        let d = vals[3];
+        bytes[byte_idx] = (a << 2) | (b >> 4);
+        bytes[byte_idx + 1] = ((b & MASK_FOUR_BITS) << 4) | (c >> 2);
+        bytes[byte_idx + 2] = ((c & MASK_TWO_BITS) << 6) | d;
+    }
+
+    if remaining > 0 {
+        let start = full_chunks * 4;
+        let chunk = &input[start..];
+
+        if start == 0 {
+            first_byte = chunk[0];
+        }
+        last_byte = *chunk.last().unwrap();
+
+        let mut vals = [0u8; 3];
+        for (i, &b) in chunk.iter().enumerate() {
+            if b == b'-' {
+                if !allow_hyphen {
+                    return Err(Error::InvalidCharacter);
+                }
+            } else if b == b'_' && !allow_underscore {
+                return Err(Error::InvalidCharacter);
+            }
+
+            let Some(v) = sixbit_value(b) else {
+                return Err(Error::InvalidCharacter);
+            };
+            vals[i] = v;
+
+            if pending_delim_error.is_none() {
+                if let Some(comp) = composition {
+                    match comp {
+                        Composition::Alphanumeric => {}
+                        Composition::AlphanumericHyphen => {
+                            if b == b'-' {
+                                if last_delim == Some(b'-') && !allow_consecutive_hyphens {
+                                    pending_delim_error = Some(Error::ConsecutiveHyphens);
+                                }
+                                last_delim = Some(b'-');
+                            } else {
+                                last_delim = None;
+                            }
+                        }
+                        Composition::AlphanumericUnderscore => {
+                            if b == b'_' {
+                                if last_delim == Some(b'_') && !allow_consecutive_underscores {
+                                    pending_delim_error = Some(Error::ConsecutiveUnderscores);
+                                }
+                                last_delim = Some(b'_');
+                            } else {
+                                last_delim = None;
+                            }
+                        }
+                        Composition::AlphanumericHyphenUnderscore => match b {
+                            b'-' | b'_' => {
+                                if let Some(prev) = last_delim {
+                                    if prev == b {
+                                        if b == b'-' && !allow_consecutive_hyphens {
+                                            pending_delim_error = Some(Error::ConsecutiveHyphens);
+                                        }
+                                        if b == b'_' && !allow_consecutive_underscores {
+                                            pending_delim_error =
+                                                Some(Error::ConsecutiveUnderscores);
+                                        }
+                                    } else if !delimiter_rules.allow_adjacent_hyphen_underscore() {
+                                        pending_delim_error = Some(Error::AdjacentHyphenUnderscore);
+                                    }
+                                }
+                                last_delim = Some(b);
+                            }
+                            _ => {
+                                last_delim = None;
+                            }
+                        },
+                    }
+                }
+            } else if let Some(comp) = composition {
+                match comp {
+                    Composition::AlphanumericHyphen => {
+                        last_delim = if b == b'-' { Some(b'-') } else { None };
+                    }
+                    Composition::AlphanumericUnderscore => {
+                        last_delim = if b == b'_' { Some(b'_') } else { None };
+                    }
+                    Composition::AlphanumericHyphenUnderscore => {
+                        last_delim = match b {
+                            b'-' | b'_' => Some(b),
+                            _ => None,
+                        };
+                    }
+                    Composition::Alphanumeric => {}
+                }
+            }
+        }
+
+        let byte_idx = full_chunks * 3;
+        match chunk.len() {
+            3 => {
+                let a = vals[0];
+                let b = vals[1];
+                let c = vals[2];
+                bytes[byte_idx] = (a << 2) | (b >> 4);
+                bytes[byte_idx + 1] = ((b & MASK_FOUR_BITS) << 4) | (c >> 2);
+                bytes[byte_idx + 2] = (c & MASK_TWO_BITS) << 6;
+            }
+            2 => {
+                let a = vals[0];
+                let b = vals[1];
+                bytes[byte_idx] = (a << 2) | (b >> 4);
+                bytes[byte_idx + 1] = (b & MASK_FOUR_BITS) << 4;
+            }
+            1 => {
+                let a = vals[0];
+                bytes[byte_idx] = a << 2;
+            }
+            _ => unreachable!(),
+        }
+    } else if len > 0 {
+        first_byte = input[0];
+        last_byte = input[len - 1];
+    }
+
+    if let Some(err) = pending_delim_error {
+        return Err(err);
+    }
+
+    if len > 0 {
+        if !delimiter_rules.allow_leading_trailing_hyphens()
+            && (first_byte == b'-' || last_byte == b'-')
+        {
+            return Err(Error::LeadingTrailingHyphen);
+        }
+        if !delimiter_rules.allow_leading_trailing_underscores()
+            && (first_byte == b'_' || last_byte == b'_')
+        {
+            return Err(Error::LeadingTrailingUnderscore);
+        }
+    }
+
+    Ok(bytes)
+}
+
 /// Core function that performs the HexaURL encoding of an input string.
 ///
 /// This function splits the input into 4-character chunks, converts each character into its SIXBIT representation,
@@ -176,7 +503,6 @@ const unsafe fn convert(byte: u8) -> u8 {
 /// * A fixed-size byte array ([u8; N]) containing the packed HexaURL representation.
 #[inline(always)]
 unsafe fn encode_core<const N: usize>(input: &str) -> [u8; N] {
-
     let len = input.len();
     let mut bytes = [0u8; N];
 
@@ -247,6 +573,7 @@ unsafe fn encode_core<const N: usize>(input: &str) -> [u8; N] {
 mod tests {
     use super::*;
     use hexaurl_config::Config;
+    use hexaurl_validate::Error;
 
     #[test]
     fn test_encode_valid_input() {
@@ -316,5 +643,24 @@ mod tests {
         assert!(encoded_opt.is_ok());
         let encoded = encoded_opt.unwrap();
         assert_eq!(encoded.len(), 9);
+    }
+
+    #[test]
+    fn test_encode_delimiter_error_precedence() {
+        let input = "a-_😃";
+        let config = Config::builder()
+            .composition(hexaurl_config::Composition::AlphanumericHyphenUnderscore)
+            .build()
+            .unwrap();
+        let res = encode_with_config::<16>(input, config);
+        assert_eq!(res, Err(Error::InvalidCharacter));
+    }
+
+    #[test]
+    fn test_encode_consecutive_hyphens_error() {
+        let input = "--a";
+        let config = Config::default();
+        let res = encode_with_config::<16>(input, config);
+        assert_eq!(res, Err(Error::ConsecutiveHyphens));
     }
 }

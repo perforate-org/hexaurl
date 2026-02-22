@@ -39,12 +39,12 @@ fn main() -> Result<(), hexaurl::Error> {
 
 HexaURL supports the following characters:
 
-- Lowercase letters (a-z)
+- Letters (a-z, case-insensitive input)
 - Numbers (0-9)
 - Hyphen (-)
 - Underscore (\_)
 
-All input is automatically converted to uppercase during encoding.
+Input accepts both uppercase and lowercase letters. Decoded/output text is normalized to lowercase.
 
 ## Validation Rules
 

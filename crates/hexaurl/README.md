@@ -10,7 +10,8 @@ This crate delivers a robust implementation that includes:
 - Efficient bit-packing operations
 - Safe APIs with comprehensive validation
 - Unsafe APIs for unmatched performance in trusted contexts
-- An optional struct-based API enabled by default with the `with-struct` feature
+- An optional struct-based API enabled by default with the `struct-api` feature
+- `serde` support is also enabled by default
 
 ## Usage
 
@@ -67,8 +68,7 @@ The decoder reverses this process to recover the original string:
 
 - Unpacks three bytes into four characters.
 - Correctly handles any partial chunks at the end of the input.
-- Supports optional case conversion.
-- Returns validated UTF-8 strings.
+- Returns lowercase normalized UTF-8 strings.
 
 ## Safety
 
