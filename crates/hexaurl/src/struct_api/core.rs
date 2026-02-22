@@ -3,12 +3,9 @@ use super::{HexaUrl256, HexaUrl8};
 use crate::{
     decode::{decode, decode_core, decode_unchecked, decode_with_config},
     encode::{encode, encode_minimal_config, encode_quick, encode_unchecked, encode_with_config},
-    validate::validate_minimal_config,
-    Error,
     utils::len,
-    MASK_TWO_BITS,
-    MASK_FOUR_BITS,
-    MASK_SIX_BITS,
+    validate::validate_minimal_config,
+    Error, MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS,
 };
 use hexaurl_config::Config;
 use std::{fmt, str};
@@ -232,7 +229,7 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
                 } else {
                     base_len
                 }
-            },
+            }
             1 => {
                 if (last_byte & MASK_TWO_BITS) == 0 {
                     base_len + 1
@@ -289,7 +286,7 @@ impl<const M: usize, const T: usize> HexaUrlCore<M, T> {
     /// Version of resize that does not allow string truncation due to length.
     pub fn reallocate<const N: usize, const S: usize>(&self) -> Option<HexaUrlCore<N, S>> {
         let byte_len = self.byte_len();
-        if byte_len < N {
+        if byte_len <= N {
             Some(self.resize_core(byte_len))
         } else {
             None
@@ -297,11 +294,7 @@ impl<const M: usize, const T: usize> HexaUrlCore<M, T> {
     }
 
     fn resize_core<const N: usize, const S: usize>(&self, byte_len: usize) -> HexaUrlCore<N, S> {
-        let length = if byte_len < N {
-            byte_len
-        } else {
-            N
-        };
+        let length = if byte_len < N { byte_len } else { N };
         let mut arr = [0; N];
         arr[..length].copy_from_slice(&self.0[..length]);
         HexaUrlCore(arr)
@@ -734,9 +727,18 @@ mod tests {
     /// Tests reallocation failure when content is too large
     #[test]
     fn test_reallocate_too_large() {
-        let input = "hello-world";
+        let input = "hello-world1";
         let large = HexaUrlCore::<16, 21>::new(input).unwrap();
         assert!(large.reallocate::<8, 10>().is_none());
+    }
+
+    /// Tests reallocation when source byte length exactly matches target capacity.
+    #[test]
+    fn test_reallocate_equal_capacity() {
+        let input = "abcdefghij";
+        let full = HexaUrlCore::<8, 10>::new(input).unwrap();
+        let same = full.reallocate::<8, 10>().unwrap();
+        assert_eq!(same.decode().unwrap(), input);
     }
 
     /// Tests try_from for String and &String
@@ -802,15 +804,15 @@ mod tests {
         /// Tests serialization in a non-human-readable context.
         #[test]
         fn test_serde_serialization_non_human_readable() {
-            // Note: serde_json is always human-readable, so we simulate a non-human-readable serializer using bincode if available.
-            // Here we only check that the process does not panic and round-trips correctly.
+            // Note: serde_json is always human-readable, so we use rkyv binary archiving.
             let input = "hello";
             let hexaurl = HexaUrlCore::<16, 21>::new(input).unwrap();
 
-            let config = bincode::config::standard();
+            let encoded = rkyv::to_bytes::<rkyv::rancor::Error>(hexaurl.as_bytes()).unwrap();
+            let decoded_bytes =
+                rkyv::from_bytes::<[u8; 16], rkyv::rancor::Error>(&encoded).unwrap();
 
-            let encoded = bincode::serde::encode_to_vec(hexaurl, config).unwrap();
-            let (decoded, _): (HexaUrlCore<16, 21>, usize) = bincode::serde::decode_from_slice(&encoded, config).unwrap();
+            let decoded = HexaUrlCore::<16, 21>::try_from_bytes(&decoded_bytes).unwrap();
             assert_eq!(hexaurl, decoded);
         }
     }
