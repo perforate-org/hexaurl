@@ -145,62 +145,76 @@ pub fn validate_with_compiled_config<const N: usize>(
 
     let bytes = input.as_bytes();
     let composition = compiled.composition();
+    let ptr = bytes.as_ptr();
+    let len = bytes.len();
+    let chunk_end = len & !7;
 
     let mut has_hyphen = false;
     let mut has_underscore = false;
 
-    let mut chunks = bytes.chunks_exact(8);
     match composition {
         Composition::Alphanumeric => {
-            for chunk in chunks.by_ref() {
-                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+            let mut i = 0usize;
+            while i < chunk_end {
+                // SAFETY: `i + 8 <= len` guarantees this read is in-bounds.
+                let val = unsafe { core::ptr::read_unaligned(ptr.add(i).cast::<u64>()) };
                 let (valid, _, _) = validate_swar::validate_chunk_alnum(val);
                 if !valid {
                     return Err(Error::InvalidCharacter);
                 }
+                i += 8;
             }
         }
         Composition::AlphanumericHyphen => {
-            for chunk in chunks.by_ref() {
-                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+            let mut i = 0usize;
+            while i < chunk_end {
+                // SAFETY: `i + 8 <= len` guarantees this read is in-bounds.
+                let val = unsafe { core::ptr::read_unaligned(ptr.add(i).cast::<u64>()) };
                 let (valid, h, _) = validate_swar::validate_chunk_hyphen(val);
                 if !valid {
                     return Err(Error::InvalidCharacter);
                 }
                 has_hyphen |= h;
+                i += 8;
             }
         }
         Composition::AlphanumericUnderscore => {
-            for chunk in chunks.by_ref() {
-                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+            let mut i = 0usize;
+            while i < chunk_end {
+                // SAFETY: `i + 8 <= len` guarantees this read is in-bounds.
+                let val = unsafe { core::ptr::read_unaligned(ptr.add(i).cast::<u64>()) };
                 let (valid, _, u) = validate_swar::validate_chunk_underscore(val);
                 if !valid {
                     return Err(Error::InvalidCharacter);
                 }
                 has_underscore |= u;
+                i += 8;
             }
         }
         Composition::AlphanumericHyphenUnderscore => {
-            for chunk in chunks.by_ref() {
-                let val = u64::from_le_bytes(chunk.try_into().unwrap());
+            let mut i = 0usize;
+            while i < chunk_end {
+                // SAFETY: `i + 8 <= len` guarantees this read is in-bounds.
+                let val = unsafe { core::ptr::read_unaligned(ptr.add(i).cast::<u64>()) };
                 let (valid, h, u) = validate_swar::validate_chunk_both(val);
                 if !valid {
                     return Err(Error::InvalidCharacter);
                 }
                 has_hyphen |= h;
                 has_underscore |= u;
+                i += 8;
             }
         }
     }
 
     match composition {
         Composition::Alphanumeric => {
-            for &b in chunks.remainder() {
+            for &b in &bytes[chunk_end..] {
                 validate_char::validate_alphanumeric(b)?;
             }
         }
         Composition::AlphanumericHyphen => {
-            for &b in chunks.remainder() {
+            for &b in &bytes[chunk_end..] {
                 validate_char::validate_alphanumeric_with_hyphen(b)?;
                 if b == b'-' {
                     has_hyphen = true;
@@ -208,7 +222,7 @@ pub fn validate_with_compiled_config<const N: usize>(
             }
         }
         Composition::AlphanumericUnderscore => {
-            for &b in chunks.remainder() {
+            for &b in &bytes[chunk_end..] {
                 validate_char::validate_alphanumeric_with_underscore(b)?;
                 if b == b'_' {
                     has_underscore = true;
@@ -216,7 +230,7 @@ pub fn validate_with_compiled_config<const N: usize>(
             }
         }
         Composition::AlphanumericHyphenUnderscore => {
-            for &b in chunks.remainder() {
+            for &b in &bytes[chunk_end..] {
                 validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?;
                 if b == b'-' {
                     has_hyphen = true;
@@ -316,16 +330,23 @@ pub fn validate_minimal_config<const N: usize>(input: &str) -> Result<(), Error>
         return Err(Error::StringTooLong(max));
     }
 
-    let mut chunks = input.as_bytes().chunks_exact(8);
-    for chunk in chunks.by_ref() {
-        let val = u64::from_le_bytes(chunk.try_into().unwrap());
+    let bytes = input.as_bytes();
+    let ptr = bytes.as_ptr();
+    let len = bytes.len();
+    let chunk_end = len & !7;
+    let mut i = 0usize;
+
+    while i < chunk_end {
+        // SAFETY: `i + 8 <= len` guarantees this read is in-bounds.
+        let val = unsafe { core::ptr::read_unaligned(ptr.add(i).cast::<u64>()) };
         let (valid, _, _) = validate_swar::validate_chunk_both(val);
         if !valid {
             return Err(Error::InvalidCharacter);
         }
+        i += 8;
     }
 
-    for &b in chunks.remainder() {
+    for &b in &bytes[chunk_end..] {
         validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?;
     }
 
