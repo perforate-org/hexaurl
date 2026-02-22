@@ -69,6 +69,44 @@ fn has_consecutive_delimiter(bytes: &[u8], needle: u8) -> bool {
     false
 }
 
+#[inline(always)]
+fn first_mixed_delimiter_violation(
+    bytes: &[u8],
+    check_consecutive_hyphen: bool,
+    check_consecutive_underscore: bool,
+    check_adjacent_mixed: bool,
+) -> Option<Error> {
+    let mut prev = 0u8;
+    let mut i = 0usize;
+    let len = bytes.len();
+    let ptr = bytes.as_ptr();
+
+    while i < len {
+        // SAFETY: `i < len` guarantees this pointer read is in-bounds.
+        let b = unsafe { *ptr.add(i) };
+        if b == b'-' || b == b'_' {
+            if prev != 0 {
+                if prev == b {
+                    if b == b'-' && check_consecutive_hyphen {
+                        return Some(Error::ConsecutiveHyphens);
+                    }
+                    if b == b'_' && check_consecutive_underscore {
+                        return Some(Error::ConsecutiveUnderscores);
+                    }
+                } else if check_adjacent_mixed {
+                    return Some(Error::AdjacentHyphenUnderscore);
+                }
+            }
+            prev = b;
+        } else {
+            prev = 0;
+        }
+        i += 1;
+    }
+
+    None
+}
+
 /// Validates a HexaURL string in a single pass with default configuration.
 /// Returns Ok(()) if the string meets all criteria, otherwise returns an Error.
 #[inline]
@@ -155,21 +193,37 @@ pub fn validate_with_compiled_config<const N: usize>(
         }
     }
 
-    for &b in chunks.remainder() {
-        match composition {
-            Composition::Alphanumeric => validate_char::validate_alphanumeric(b)?,
-            Composition::AlphanumericHyphen => validate_char::validate_alphanumeric_with_hyphen(b)?,
-            Composition::AlphanumericUnderscore => {
-                validate_char::validate_alphanumeric_with_underscore(b)?
-            }
-            Composition::AlphanumericHyphenUnderscore => {
-                validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?
+    match composition {
+        Composition::Alphanumeric => {
+            for &b in chunks.remainder() {
+                validate_char::validate_alphanumeric(b)?;
             }
         }
-        if b == b'-' {
-            has_hyphen = true;
-        } else if b == b'_' {
-            has_underscore = true;
+        Composition::AlphanumericHyphen => {
+            for &b in chunks.remainder() {
+                validate_char::validate_alphanumeric_with_hyphen(b)?;
+                if b == b'-' {
+                    has_hyphen = true;
+                }
+            }
+        }
+        Composition::AlphanumericUnderscore => {
+            for &b in chunks.remainder() {
+                validate_char::validate_alphanumeric_with_underscore(b)?;
+                if b == b'_' {
+                    has_underscore = true;
+                }
+            }
+        }
+        Composition::AlphanumericHyphenUnderscore => {
+            for &b in chunks.remainder() {
+                validate_char::validate_alphanumeric_with_hyphen_or_underscore(b)?;
+                if b == b'-' {
+                    has_hyphen = true;
+                } else if b == b'_' {
+                    has_underscore = true;
+                }
+            }
         }
     }
 
@@ -218,28 +272,13 @@ pub fn validate_with_compiled_config<const N: usize>(
         }
         Composition::AlphanumericHyphenUnderscore => {
             let rules = compiled.delimiter_rules();
-            let mut last_delim: Option<u8> = None;
-            for &b in bytes {
-                match b {
-                    b'-' | b'_' => {
-                        if let Some(prev) = last_delim {
-                            if prev == b {
-                                if b == b'-' && !rules.allow_consecutive_hyphens() {
-                                    return Err(Error::ConsecutiveHyphens);
-                                }
-                                if b == b'_' && !rules.allow_consecutive_underscores() {
-                                    return Err(Error::ConsecutiveUnderscores);
-                                }
-                            } else if !rules.allow_adjacent_hyphen_underscore() {
-                                return Err(Error::AdjacentHyphenUnderscore);
-                            }
-                        }
-                        last_delim = Some(b);
-                    }
-                    _ => {
-                        last_delim = None;
-                    }
-                }
+            if let Some(err) = first_mixed_delimiter_violation(
+                bytes,
+                !rules.allow_consecutive_hyphens(),
+                !rules.allow_consecutive_underscores(),
+                !rules.allow_adjacent_hyphen_underscore(),
+            ) {
+                return Err(err);
             }
         }
     }
