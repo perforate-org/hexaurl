@@ -2,10 +2,18 @@ extern crate test;
 
 use super::*;
 use canbench_rs::bench;
+use hexaurl::config::{Composition, Config, DelimiterRules};
+use hexaurl::validate::validate_with_compiled_config;
 use once_cell::sync::Lazy;
 use test::black_box;
 
 const INPUT: &str = "hello-world";
+const VALIDATE_SHORT_OK: &str = "abc";
+const VALIDATE_MEDIUM_OK: &str = "hello-world_12";
+const VALIDATE_LONG_OK: &str = "abcd-efgh_ijkl-mnop";
+const VALIDATE_DELIM_HEAVY_OK: &str = "a-b-c-d-e-f-g-h-i-j-k";
+const VALIDATE_ERROR_INVALID_CHAR: &str = "hello*world";
+const VALIDATE_ERROR_CONSEC_HYPHEN: &str = "ab--cd-ef-gh";
 static INPUT_ENCODED: Lazy<HexaUrl> = Lazy::new(|| HexaUrl::new(black_box(INPUT)).unwrap());
 static FIRST_100_KEYS: Lazy<Vec<String>> =
     Lazy::new(|| MAP_KEYS.iter().take(100).map(|k| k.to_string()).collect());
@@ -14,6 +22,28 @@ static FIRST_100_HEX: Lazy<Vec<HexaUrl>> = Lazy::new(|| {
         .iter()
         .map(|k| HexaUrl::new(k).unwrap())
         .collect()
+});
+static CFG_ALNUM: Lazy<Config<16>> = Lazy::new(|| {
+    Config::<16>::builder()
+        .min_length(Some(3))
+        .composition(Composition::Alphanumeric)
+        .build()
+        .unwrap()
+});
+static CFG_HYPHEN_STRICT: Lazy<Config<16>> = Lazy::new(|| {
+    Config::<16>::builder()
+        .min_length(Some(3))
+        .composition(Composition::AlphanumericHyphen)
+        .build()
+        .unwrap()
+});
+static CFG_HYPHEN_UNDERSCORE_PERMISSIVE: Lazy<Config<16>> = Lazy::new(|| {
+    Config::<16>::builder()
+        .min_length(Some(3))
+        .composition(Composition::AlphanumericHyphenUnderscore)
+        .delimiter(Some(DelimiterRules::all_allowed()))
+        .build()
+        .unwrap()
 });
 
 #[bench]
@@ -160,4 +190,62 @@ fn bench_insert_actor_stable_by_plain_string() {
         )));
         black_box(res);
     });
+}
+
+#[bench]
+fn bench_validate_short_ok_default() {
+    let res = validate::<16>(black_box(VALIDATE_SHORT_OK));
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_medium_ok_default() {
+    let res = validate::<16>(black_box(VALIDATE_MEDIUM_OK));
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_long_ok_default() {
+    let res = validate::<16>(black_box(VALIDATE_LONG_OK));
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_delim_heavy_ok_strict() {
+    let res = validate_with_compiled_config::<16>(
+        black_box(VALIDATE_DELIM_HEAVY_OK),
+        black_box(&*CFG_HYPHEN_STRICT),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_error_invalid_char_default() {
+    let res = validate::<16>(black_box(VALIDATE_ERROR_INVALID_CHAR));
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_error_consecutive_hyphen_strict() {
+    let res = validate_with_compiled_config::<16>(
+        black_box(VALIDATE_ERROR_CONSEC_HYPHEN),
+        black_box(&*CFG_HYPHEN_STRICT),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_config_alnum_ok() {
+    let res =
+        validate_with_compiled_config::<16>(black_box("abcdef123456"), black_box(&*CFG_ALNUM));
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_config_permissive_mixed_ok() {
+    let res = validate_with_compiled_config::<16>(
+        black_box("ab-_cd-_ef-_gh"),
+        black_box(&*CFG_HYPHEN_UNDERSCORE_PERMISSIVE),
+    );
+    let _ = black_box(res);
 }
