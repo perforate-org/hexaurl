@@ -12,8 +12,10 @@ const VALIDATE_SHORT_OK: &str = "abc";
 const VALIDATE_MEDIUM_OK: &str = "hello-world_12";
 const VALIDATE_LONG_OK: &str = "abcd-efgh_ijkl-mnop";
 const VALIDATE_DELIM_HEAVY_OK: &str = "a-b-c-d-e-f-g-h-i-j-k";
+const VALIDATE_MIXED_STRICT_OK: &str = "ab-cd_ef-gh_ij";
 const VALIDATE_ERROR_INVALID_CHAR: &str = "hello*world";
 const VALIDATE_ERROR_CONSEC_HYPHEN: &str = "ab--cd-ef-gh";
+const VALIDATE_ERROR_ADJACENT_MIXED: &str = "ab-_cd-ef-gh";
 static INPUT_ENCODED: Lazy<HexaUrl> = Lazy::new(|| HexaUrl::new(black_box(INPUT)).unwrap());
 static FIRST_100_KEYS: Lazy<Vec<String>> =
     Lazy::new(|| MAP_KEYS.iter().take(100).map(|k| k.to_string()).collect());
@@ -42,6 +44,13 @@ static CFG_HYPHEN_UNDERSCORE_PERMISSIVE: Lazy<Config<16>> = Lazy::new(|| {
         .min_length(Some(3))
         .composition(Composition::AlphanumericHyphenUnderscore)
         .delimiter(Some(DelimiterRules::all_allowed()))
+        .build()
+        .unwrap()
+});
+static CFG_HYPHEN_UNDERSCORE_STRICT: Lazy<Config<16>> = Lazy::new(|| {
+    Config::<16>::builder()
+        .min_length(Some(3))
+        .composition(Composition::AlphanumericHyphenUnderscore)
         .build()
         .unwrap()
 });
@@ -246,6 +255,24 @@ fn bench_validate_config_permissive_mixed_ok() {
     let res = validate_with_compiled_config::<16>(
         black_box("ab-_cd-_ef-_gh"),
         black_box(&*CFG_HYPHEN_UNDERSCORE_PERMISSIVE),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_mixed_strict_ok() {
+    let res = validate_with_compiled_config::<16>(
+        black_box(VALIDATE_MIXED_STRICT_OK),
+        black_box(&*CFG_HYPHEN_UNDERSCORE_STRICT),
+    );
+    let _ = black_box(res);
+}
+
+#[bench]
+fn bench_validate_error_adjacent_mixed_strict() {
+    let res = validate_with_compiled_config::<16>(
+        black_box(VALIDATE_ERROR_ADJACENT_MIXED),
+        black_box(&*CFG_HYPHEN_UNDERSCORE_STRICT),
     );
     let _ = black_box(res);
 }
