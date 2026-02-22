@@ -14,7 +14,10 @@ pub mod encode;
 pub mod struct_api;
 mod utils;
 
-pub use decode::{decode, decode_unchecked, decode_with_config};
+pub use decode::{
+    decode, decode_into, decode_into_with_config, decode_unchecked, decode_unchecked_into,
+    decode_with_config,
+};
 pub use encode::{encode, encode_quick, encode_unchecked, encode_with_config};
 #[cfg(feature = "struct-api")]
 #[cfg_attr(docsrs, doc(cfg(feature = "struct-api")))]

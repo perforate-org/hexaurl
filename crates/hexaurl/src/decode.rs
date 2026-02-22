@@ -4,9 +4,9 @@
 //! to ensure all HexaURL values are within the valid range, while the unchecked functions assume the input
 //! is already valid for increased performance.
 
-use crate::{utils::len, Error, MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS};
+use crate::{Error, MASK_FOUR_BITS, MASK_SIX_BITS, MASK_TWO_BITS};
 use hexaurl_validate::{config::Config, validate_with_config};
-use std::{slice, str};
+use std::str;
 
 /// This function converts a slice of HexaURL-encoded bytes into the original string based on the provided length.
 ///
@@ -44,8 +44,35 @@ pub fn decode_with_config<const N: usize, const S: usize>(
     bytes: &[u8; N],
     config: Config,
 ) -> Result<String, Error> {
-    let res = decode_unchecked::<N, S>(bytes);
-    validate_with_config::<N>(&res, config)?;
+    let mut dst = [0u8; S];
+    let res = decode_into_with_config::<N, S>(bytes, &mut dst, config)?;
+    Ok(res.to_owned())
+}
+
+/// Decodes into a caller-provided buffer using default validation configuration.
+///
+/// Returns a borrowed string slice into `dst`, avoiding allocation in the decode path.
+#[inline]
+pub fn decode_into<'a, const N: usize, const S: usize>(
+    bytes: &[u8; N],
+    dst: &'a mut [u8; S],
+) -> Result<&'a str, Error> {
+    decode_into_with_config::<N, S>(bytes, dst, Config::default())
+}
+
+/// Decodes into a caller-provided buffer using a custom validation configuration.
+///
+/// Returns a borrowed string slice into `dst`, avoiding allocation in the decode path.
+#[inline]
+pub fn decode_into_with_config<'a, const N: usize, const S: usize>(
+    bytes: &[u8; N],
+    dst: &'a mut [u8; S],
+    config: Config,
+) -> Result<&'a str, Error> {
+    let res = decode_core::<N, S>(bytes, dst);
+    // SAFETY: decode_core only emits ASCII bytes from the lookup table, which are always valid UTF-8.
+    let res = unsafe { str::from_utf8_unchecked(res) };
+    validate_with_config::<N>(res, config)?;
     Ok(res)
 }
 
@@ -74,9 +101,20 @@ pub fn decode_with_config<const N: usize, const S: usize>(
 #[inline(always)]
 pub fn decode_unchecked<const N: usize, const S: usize>(bytes: &[u8; N]) -> String {
     let mut res: [u8; S] = [0; S];
-    let slice = decode_core::<N, S>(bytes, &mut res);
+    decode_unchecked_into::<N, S>(bytes, &mut res).to_owned()
+}
+
+/// Decodes into a caller-provided buffer without validation checks.
+///
+/// Returns a borrowed string slice into `dst`, avoiding allocation in the decode path.
+#[inline(always)]
+pub fn decode_unchecked_into<'a, const N: usize, const S: usize>(
+    bytes: &[u8; N],
+    dst: &'a mut [u8; S],
+) -> &'a str {
+    let slice = decode_core::<N, S>(bytes, dst);
     // SAFETY: decode_core only emits ASCII bytes from the lookup table, which are always valid UTF-8.
-    unsafe { str::from_utf8_unchecked(slice) }.to_owned()
+    unsafe { str::from_utf8_unchecked(slice) }
 }
 
 // ============================================================
@@ -118,24 +156,6 @@ const fn full_chunks(n: usize) -> usize {
     n / 3
 }
 
-/// Calculates the number of remaining bytes after processing full chunks.
-#[inline(always)]
-const fn remaining_bytes(n: usize) -> usize {
-    n % 3
-}
-
-/// Calculates the offset of the remaining bytes in the input.
-#[inline(always)]
-const fn remaining_ptr_offset(n: usize) -> usize {
-    full_chunks(n) * 3
-}
-
-/// Calculates the offset of the remaining characters in the output.
-#[inline(always)]
-const fn remaining_chars_ptr_offset(n: usize) -> usize {
-    full_chunks(n) * 4
-}
-
 /// Decodes a fixed-size array of HexaURL-encoded bytes into a String.
 ///
 /// This function uses a fixed-size stack allocated array to avoid heap allocation overhead.
@@ -150,108 +170,69 @@ pub(crate) fn decode_core<'a, const N: usize, const S: usize>(
     // The output size is 4/3 times the input size.
     assert_eq!(N * 4 / 3, S, "Output size mismatch");
 
-    'outer: {
-        // Process full 3-byte chunks first.
-        for chunk_idx in 0..full_chunks(N) {
-            // Compute pointers for the current chunk to avoid bounds checks.
-            let src_chunk = unsafe { slice::from_raw_parts(src.as_ptr().add(chunk_idx * 3), 3) };
-            let dst_chunk =
-                unsafe { slice::from_raw_parts_mut(dst.as_mut_ptr().add(chunk_idx * 4), 4) };
-            // If the chunk is empty, break the decoding.
-            if decode_chunk_sixbit(src_chunk, dst_chunk).is_err() {
-                break 'outer;
+    let src_ptr = src.as_ptr();
+    let dst_ptr = dst.as_mut_ptr();
+    let chunks = full_chunks(N);
+    let mut decoded_len = 0usize;
+
+    // Process full 3-byte chunks first.
+    for chunk_idx in 0..chunks {
+        unsafe {
+            let s = src_ptr.add(chunk_idx * 3);
+            if *s == 0 {
+                return dst[..decoded_len].as_ref();
             }
-        }
-        // Process any remaining bytes that don't make up a complete 3-byte chunk.
-        decode_remaining_sixbit(
-            unsafe {
-                slice::from_raw_parts(
-                    src.as_ptr().add(remaining_ptr_offset(N)),
-                    remaining_bytes(N),
-                )
-            },
-            unsafe {
-                slice::from_raw_parts_mut(
-                    dst.as_mut_ptr().add(remaining_chars_ptr_offset(N)),
-                    remaining_bytes(N), // len is same as remaining_bytes(N)
-                )
-            },
-            remaining_bytes(N),
-        );
-    }
 
-    // Trim any trailing null bytes from the result.
-    dst[..len(dst)].as_ref()
-}
+            let r = dst_ptr.add(chunk_idx * 4);
+            let v0 = convert((*s) >> 2);
+            let v1 = convert(((*s & MASK_TWO_BITS) << 4) | (*s.add(1) >> 4));
+            let v2 = convert(((*s.add(1) & MASK_FOUR_BITS) << 2) | (*s.add(2) >> 6));
+            let v3 = convert(*s.add(2) & MASK_SIX_BITS);
 
-/// Decodes a chunk of 3 bytes into 4 SIXBIT characters.
-///
-/// This function uses unsafe pointer arithmetic to extract and decode four SIXBIT characters from a block of three bytes.
-/// It assumes that `src` has at least 3 bytes and `dst` has space for at least 4 bytes.
-///
-/// # Safety
-/// This function performs unchecked pointer arithmetic and should be used only when the caller ensures the slices meet
-/// the required minimum lengths.
-///
-/// # Parameters
-/// - `src`: A slice of 3 bytes containing SIXBIT-encoded data.
-/// - `dst`: A mutable slice of 4 bytes where the decoded characters will be stored.
-#[inline(always)]
-const fn decode_chunk_sixbit(src: &[u8], dst: &mut [u8]) -> Result<(), ()> {
-    // Use unsafe pointer arithmetic to eliminate bounds checks.
-    // We assume that src has at least 3 bytes and dst has at least 4 bytes.
-    unsafe {
-        let s = src.as_ptr();
-        // If the first byte is zero, the chunk is empty.
-        if *s == 0 {
-            return Err(());
-        }
-        let r = dst.as_mut_ptr();
+            *r = v0;
+            *r.add(1) = v1;
+            *r.add(2) = v2;
+            *r.add(3) = v3;
 
-        *r = convert((*s) >> 2);
-        *r.add(1) = convert(((*s & MASK_TWO_BITS) << 4) | (*s.add(1) >> 4));
-        *r.add(2) = convert(((*s.add(1) & MASK_FOUR_BITS) << 2) | (*s.add(2) >> 6));
-        *r.add(3) = convert(*s.add(2) & MASK_SIX_BITS);
-    }
-    Ok(())
-}
-
-/// Decodes any remaining SIXBIT-encoded bytes that do not form a full 3-byte chunk.
-///
-/// This function uses unsafe pointer arithmetic to extract and decode the remaining bytes based on the number of leftover bytes.
-/// It assumes that `src` has at most 2 bytes and `dst` has space for at most 2 bytes.
-///
-/// # Safety
-/// This function performs unchecked pointer arithmetic and should be used only when the caller ensures the slices meet
-/// the required maximum lengths.
-///
-/// # Parameters
-/// - `src`: A slice of at most 2 bytes containing SIXBIT-encoded data.
-/// - `dst`: A mutable slice of at most 2 bytes where the decoded characters will be stored.
-#[inline(always)]
-const fn decode_remaining_sixbit(src: &[u8], dst: &mut [u8], remaining_bytes: usize) {
-    // Decode remaining SIXBIT bytes based on the number of leftover bytes.
-    unsafe {
-        let s = src.as_ptr();
-        let r = dst.as_mut_ptr();
-
-        match remaining_bytes {
-            1 => {
-                // If there is 1 remaining byte, decode it by shifting right by 2 bits and converting to lowercase.
-                *r = convert((*s) >> 2);
+            let base = chunk_idx * 4;
+            if v0 != 0 {
+                decoded_len = base + 1;
             }
-            2 => {
-                // If there are 2 remaining bytes:
-                // First character: decode by shifting the first byte right by 2 bits.
-                *r = convert((*s) >> 2);
-                // Second character: combine the lower 2 bits of the first byte with the upper 4 bits of the second byte.
-                *r.add(1) = convert(((*s & MASK_TWO_BITS) << 4) | (*s.add(1) >> 4));
+            if v1 != 0 {
+                decoded_len = base + 2;
             }
-            _ => {
-                // No decoding is performed if there are no remaining bytes or an unexpected number.
+            if v2 != 0 {
+                decoded_len = base + 3;
+            }
+            if v3 != 0 {
+                decoded_len = base + 4;
             }
         }
     }
+
+    // Process remaining bytes without creating temporary slices.
+    let rem = N % 3;
+    let rem_base = chunks * 4;
+    if rem > 0 {
+        unsafe {
+            let s = src_ptr.add(chunks * 3);
+            let r = dst_ptr.add(rem_base);
+            let v0 = convert((*s) >> 2);
+            *r = v0;
+            if v0 != 0 {
+                decoded_len = rem_base + 1;
+            }
+
+            if rem == 2 {
+                let v1 = convert(((*s & MASK_TWO_BITS) << 4) | (*s.add(1) >> 4));
+                *r.add(1) = v1;
+                if v1 != 0 {
+                    decoded_len = rem_base + 2;
+                }
+            }
+        }
+    }
+    dst[..decoded_len].as_ref()
 }
 
 #[cfg(test)]

@@ -1,7 +1,10 @@
 #[allow(unused_imports)]
 use super::{HexaUrl256, HexaUrl8};
 use crate::{
-    decode::{decode, decode_core, decode_unchecked, decode_with_config},
+    decode::{
+        decode, decode_core, decode_into, decode_into_with_config, decode_unchecked,
+        decode_unchecked_into, decode_with_config,
+    },
     encode::{encode, encode_minimal_config, encode_quick, encode_unchecked, encode_with_config},
     utils::len,
     validate::validate_minimal_config,
@@ -154,6 +157,26 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
         decode_with_config::<N, S>(&self.0, config)
     }
 
+    /// Decodes this value into a caller-provided buffer with default validation.
+    ///
+    /// Returns a borrowed string slice into `dst`, avoiding allocation in the decode path.
+    #[inline]
+    pub fn decode_into<'a>(&self, dst: &'a mut [u8; S]) -> Result<&'a str, Error> {
+        decode_into::<N, S>(&self.0, dst)
+    }
+
+    /// Decodes this value into a caller-provided buffer with custom validation configuration.
+    ///
+    /// Returns a borrowed string slice into `dst`, avoiding allocation in the decode path.
+    #[inline]
+    pub fn decode_into_with_config<'a>(
+        &self,
+        dst: &'a mut [u8; S],
+        config: Config,
+    ) -> Result<&'a str, Error> {
+        decode_into_with_config::<N, S>(&self.0, dst, config)
+    }
+
     /// Decodes the `HexaUrlCore` into a `String` without performing any validation.
     ///
     /// # Safety
@@ -162,6 +185,14 @@ impl<const N: usize, const S: usize> HexaUrlCore<N, S> {
     #[inline(always)]
     pub fn decode_unchecked(&self) -> String {
         decode_unchecked::<N, S>(&self.0)
+    }
+
+    /// Decodes this value into a caller-provided buffer without validation checks.
+    ///
+    /// Returns a borrowed string slice into `dst`, avoiding allocation in the decode path.
+    #[inline(always)]
+    pub fn decode_unchecked_into<'a>(&self, dst: &'a mut [u8; S]) -> &'a str {
+        decode_unchecked_into::<N, S>(&self.0, dst)
     }
 
     /// Returns a reference to the underlying byte array.

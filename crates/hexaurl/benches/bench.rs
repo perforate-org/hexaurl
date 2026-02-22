@@ -21,7 +21,7 @@ mod benches {
 
     use fixedstr::str32;
     use hexaurl::{
-        decode::{decode, decode_unchecked},
+        decode::{decode, decode_into, decode_unchecked, decode_unchecked_into},
         encode::{encode, encode_quick, encode_unchecked},
         HexaUrl,
     };
@@ -496,6 +496,66 @@ mod benches {
     fn decode_unchecked_long(b: &mut Bencher) {
         let encoded = encode::<16>(LONG_INPUT).unwrap();
         b.iter(|| decode_unchecked::<16, 21>(black_box(&encoded)));
+    }
+
+    #[bench]
+    fn decode_into_short(b: &mut Bencher) {
+        let encoded = encode::<16>(SHORT_INPUT).unwrap();
+        b.iter(|| {
+            let mut out = [0u8; 21];
+            let decoded = decode_into::<16, 21>(black_box(&encoded), black_box(&mut out)).unwrap();
+            black_box(decoded.len());
+        });
+    }
+
+    #[bench]
+    fn decode_into_medium(b: &mut Bencher) {
+        let encoded = encode::<16>(MEDIUM_INPUT).unwrap();
+        b.iter(|| {
+            let mut out = [0u8; 21];
+            let decoded = decode_into::<16, 21>(black_box(&encoded), black_box(&mut out)).unwrap();
+            black_box(decoded.len());
+        });
+    }
+
+    #[bench]
+    fn decode_into_long(b: &mut Bencher) {
+        let encoded = encode::<16>(LONG_INPUT).unwrap();
+        b.iter(|| {
+            let mut out = [0u8; 21];
+            let decoded = decode_into::<16, 21>(black_box(&encoded), black_box(&mut out)).unwrap();
+            black_box(decoded.len());
+        });
+    }
+
+    #[bench]
+    fn decode_unchecked_into_short(b: &mut Bencher) {
+        let encoded = encode::<16>(SHORT_INPUT).unwrap();
+        b.iter(|| {
+            let mut out = [0u8; 21];
+            let decoded = decode_unchecked_into::<16, 21>(black_box(&encoded), black_box(&mut out));
+            black_box(decoded.len());
+        });
+    }
+
+    #[bench]
+    fn decode_unchecked_into_medium(b: &mut Bencher) {
+        let encoded = encode::<16>(MEDIUM_INPUT).unwrap();
+        b.iter(|| {
+            let mut out = [0u8; 21];
+            let decoded = decode_unchecked_into::<16, 21>(black_box(&encoded), black_box(&mut out));
+            black_box(decoded.len());
+        });
+    }
+
+    #[bench]
+    fn decode_unchecked_into_long(b: &mut Bencher) {
+        let encoded = encode::<16>(LONG_INPUT).unwrap();
+        b.iter(|| {
+            let mut out = [0u8; 21];
+            let decoded = decode_unchecked_into::<16, 21>(black_box(&encoded), black_box(&mut out));
+            black_box(decoded.len());
+        });
     }
 
     // Encoding safety benchmarks
