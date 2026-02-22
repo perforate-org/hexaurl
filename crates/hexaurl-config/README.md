@@ -31,7 +31,8 @@ let config = Config::builder()
             .allow_leading_trailing_hyphens(false)
             .build()
     ))
-    .build();
+    .build()
+    .unwrap();
 ```
 
 ## Configuration Components
@@ -54,7 +55,8 @@ let config = Config::builder()
     .min_length(Some(5))
     .max_length(Some(20))
     .composition(Composition::Alphanumeric)
-    .build();
+    .build()
+    .unwrap();
 ```
 
 ### Identifier Composition
@@ -84,13 +86,18 @@ let delimiter_config = DelimiterRules::builder()
 
 ## Default Values
 
-The default configuration:
+`Config::default()`:
 
-- No minimum length
-- Maximum length of the encoded HexaURL string representation
-- Alphanumeric with hyphens and underscores
-- No consecutive delimiters
-- No leading/trailing delimiters
-- No adjacent different delimiters
+- Minimum length: `Some(3)`
+- Maximum length: `None` (effective max is enforced by the target byte-size at validation/encoding time)
+- Composition: `AlphanumericHyphen`
+- Delimiter rules: `None` (validator uses `DelimiterRules::default()`)
+
+`Config::minimal()`:
+
+- Minimum length: `None`
+- Maximum length: `None`
+- Composition: `AlphanumericHyphenUnderscore`
+- Delimiter rules: `Some(DelimiterRules::all_allowed())`
 
 See [the root README.md](https://github.com/perforate-org/hexaurl#readme) for complete documentation.

@@ -26,7 +26,8 @@ assert!(result.is_ok());
 let config = Config::builder()
     .min_length(Some(5))
     .composition(Composition::AlphanumericHyphen)
-    .build();
+    .build()
+    .unwrap();
 
 let result = validate_with_config::<16>("Hello-World", config);
 ```
@@ -61,7 +62,8 @@ use hexaurl_config::Config;
 let config = Config::builder()
     .min_length(Some(5))    // Minimum 5 characters
     .max_length(Some(20))   // Maximum 20 characters
-    .build();
+    .build()
+    .unwrap();
 ```
 
 ### Delimiter Rules
@@ -83,7 +85,8 @@ let delimiter_config = DelimiterRules::builder()
 
 let config = Config::builder()
     .delimiter(Some(delimiter_config))
-    .build();
+    .build()
+    .unwrap();
 ```
 
 ## Error Handling

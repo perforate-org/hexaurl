@@ -1,6 +1,48 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+use core::fmt;
+
+/// Error type for invalid configuration values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigError {
+    /// Minimum length is greater than maximum length.
+    InvalidLengthRange {
+        /// Provided minimum length.
+        min: usize,
+        /// Provided maximum length.
+        max: usize,
+    },
+}
+
+impl fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidLengthRange { min, max } => {
+                write!(
+                    f,
+                    "Minimum length {min} cannot be greater than maximum length {max}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+#[inline]
+fn validate_length_range(
+    min_length: Option<usize>,
+    max_length: Option<usize>,
+) -> Result<(), ConfigError> {
+    if let (Some(min), Some(max)) = (min_length, max_length) {
+        if min > max {
+            return Err(ConfigError::InvalidLengthRange { min, max });
+        }
+    }
+    Ok(())
+}
+
 /// Configuration for validation rules.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct Config {
@@ -17,20 +59,15 @@ impl Config {
         max_length: Option<usize>,
         composition: Composition,
         delimiter: Option<DelimiterRules>,
-    ) -> Self {
-        assert!(
-            min_length.is_none()
-                || max_length.is_none()
-                || min_length.unwrap() <= max_length.unwrap(),
-            "Minimum length cannot be greater than maximum length"
-        );
+    ) -> Result<Self, ConfigError> {
+        validate_length_range(min_length, max_length)?;
 
-        Self {
+        Ok(Self {
             min_length,
             max_length,
             composition,
             delimiter,
-        }
+        })
     }
 
     /// Constructs a minimally restricted validation configuration.
@@ -130,20 +167,15 @@ impl ConfigBuilder {
     }
 
     /// Builds the [`Config`]. Missing values default to those defined by [`Default`].
-    pub fn build(self) -> Config {
-        assert!(
-            self.min_length.is_none()
-                || self.max_length.is_none()
-                || self.min_length.unwrap() <= self.max_length.unwrap(),
-            "Minimum length cannot be greater than maximum length"
-        );
+    pub fn build(self) -> Result<Config, ConfigError> {
+        validate_length_range(self.min_length, self.max_length)?;
 
-        Config {
+        Ok(Config {
             min_length: self.min_length,
             max_length: self.max_length,
             composition: self.composition,
             delimiter: self.delimiter,
-        }
+        })
     }
 }
 
@@ -301,7 +333,7 @@ mod tests {
 
     #[test]
     fn test_config_new() {
-        let config = Config::new(Some(5), Some(10), Composition::Alphanumeric, None);
+        let config = Config::new(Some(5), Some(10), Composition::Alphanumeric, None).unwrap();
 
         assert_eq!(config.min_length(), Some(5));
         assert_eq!(config.max_length(), Some(10));
@@ -350,7 +382,8 @@ mod tests {
             .max_length(Some(12))
             .composition(Composition::AlphanumericHyphenUnderscore)
             .delimiter(Some(delimiter))
-            .build();
+            .build()
+            .unwrap();
 
         assert_eq!(vc.min_length(), Some(4));
         assert_eq!(vc.max_length(), Some(12));
@@ -397,11 +430,18 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Minimum length cannot be greater than maximum length")]
-    fn test_invalid_length_config() {
-        Config::builder()
+    fn test_invalid_length_config_builder() {
+        let err = Config::builder()
             .min_length(Some(10))
             .max_length(Some(5))
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(err, ConfigError::InvalidLengthRange { min: 10, max: 5 });
+    }
+
+    #[test]
+    fn test_invalid_length_config_new() {
+        let err = Config::new(Some(10), Some(5), Composition::Alphanumeric, None).unwrap_err();
+        assert_eq!(err, ConfigError::InvalidLengthRange { min: 10, max: 5 });
     }
 }
