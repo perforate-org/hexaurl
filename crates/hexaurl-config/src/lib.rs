@@ -6,11 +6,18 @@ use core::fmt;
 /// Error type for invalid configuration values.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConfigError {
-    /// Minimum length is greater than maximum length.
+    /// Minimum length is greater than maximum length in builder input.
     InvalidLengthRange {
         /// Provided minimum length.
         min: usize,
         /// Provided maximum length.
+        max: usize,
+    },
+    /// Minimum length is greater than effective max for the target capacity.
+    InvalidCompiledLengthRange {
+        /// Provided minimum length.
+        min: usize,
+        /// Effective maximum length.
         max: usize,
     },
 }
@@ -24,11 +31,22 @@ impl fmt::Display for ConfigError {
                     "Minimum length {min} cannot be greater than maximum length {max}"
                 )
             }
+            Self::InvalidCompiledLengthRange { min, max } => {
+                write!(
+                    f,
+                    "Minimum length {min} cannot be greater than compiled maximum length {max}"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for ConfigError {}
+
+#[inline(always)]
+const fn calc_str_len(n: usize) -> usize {
+    n * 4 / 3
+}
 
 #[inline]
 fn validate_length_range(
@@ -43,46 +61,32 @@ fn validate_length_range(
     Ok(())
 }
 
-/// Configuration for validation rules.
+/// Precompiled validation configuration for a specific HexaURL byte size `N`.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-pub struct Config {
+pub struct Config<const N: usize> {
     min_length: Option<usize>,
-    max_length: Option<usize>,
+    effective_max: usize,
     composition: Composition,
-    delimiter: Option<DelimiterRules>,
+    delimiter_rules: DelimiterRules,
+    allow_hyphen: bool,
+    allow_underscore: bool,
 }
 
-impl Config {
-    /// Constructs a new validation configuration.
-    pub fn new(
-        min_length: Option<usize>,
-        max_length: Option<usize>,
-        composition: Composition,
-        delimiter: Option<DelimiterRules>,
-    ) -> Result<Self, ConfigError> {
-        validate_length_range(min_length, max_length)?;
-
-        Ok(Self {
-            min_length,
-            max_length,
-            composition,
-            delimiter,
-        })
-    }
-
-    /// Constructs a minimally restricted validation configuration.
-    pub fn minimal() -> Self {
-        Self {
-            min_length: None,
-            max_length: None,
-            composition: Composition::AlphanumericHyphenUnderscore,
-            delimiter: Some(DelimiterRules::all_allowed()),
-        }
-    }
-
-    /// Creates a new builder for validation config.
-    pub fn builder() -> ConfigBuilder {
+impl<const N: usize> Config<N> {
+    /// Creates a builder that compiles directly into [`Config`].
+    pub fn builder() -> ConfigBuilder<N> {
         ConfigBuilder::default()
+    }
+
+    /// Creates a minimally restricted compiled config.
+    pub fn minimal() -> Self {
+        Self::builder()
+            .min_length(None)
+            .max_length(None)
+            .composition(Composition::AlphanumericHyphenUnderscore)
+            .delimiter(Some(DelimiterRules::all_allowed()))
+            .build()
+            .expect("minimal config is valid")
     }
 
     /// Returns the minimum allowed length.
@@ -90,9 +94,9 @@ impl Config {
         self.min_length
     }
 
-    /// Returns the maximum allowed length.
-    pub fn max_length(&self) -> Option<usize> {
-        self.max_length
+    /// Returns the effective maximum allowed length.
+    pub fn effective_max(&self) -> usize {
+        self.effective_max
     }
 
     /// Returns the identifier composition rule.
@@ -100,32 +104,39 @@ impl Config {
         self.composition
     }
 
-    /// Returns the delimiter rules, if any.
-    pub fn delimiter(&self) -> Option<DelimiterRules> {
-        self.delimiter
+    /// Returns the delimiter rules.
+    pub fn delimiter_rules(&self) -> DelimiterRules {
+        self.delimiter_rules
+    }
+
+    /// Whether hyphen is allowed by composition.
+    pub fn allow_hyphen(&self) -> bool {
+        self.allow_hyphen
+    }
+
+    /// Whether underscore is allowed by composition.
+    pub fn allow_underscore(&self) -> bool {
+        self.allow_underscore
     }
 }
 
-impl Default for Config {
+impl<const N: usize> Default for Config<N> {
     fn default() -> Self {
-        Self {
-            min_length: Some(3),
-            max_length: None,
-            composition: Composition::default(),
-            delimiter: None,
-        }
+        ConfigBuilder::default()
+            .build()
+            .expect("default config is always valid")
     }
 }
 
-/// Builder for [`Config`].
-pub struct ConfigBuilder {
+/// Builder for compiled [`Config`].
+pub struct ConfigBuilder<const N: usize> {
     min_length: Option<usize>,
     max_length: Option<usize>,
     composition: Composition,
     delimiter: Option<DelimiterRules>,
 }
 
-impl Default for ConfigBuilder {
+impl<const N: usize> Default for ConfigBuilder<N> {
     fn default() -> Self {
         Self {
             min_length: Some(3),
@@ -136,8 +147,8 @@ impl Default for ConfigBuilder {
     }
 }
 
-impl ConfigBuilder {
-    /// Creates a new builder for validation config.
+impl<const N: usize> ConfigBuilder<N> {
+    /// Creates a new builder.
     pub fn new() -> Self {
         Self::default()
     }
@@ -166,15 +177,40 @@ impl ConfigBuilder {
         self
     }
 
-    /// Builds the [`Config`]. Missing values default to those defined by [`Default`].
-    pub fn build(self) -> Result<Config, ConfigError> {
+    /// Builds a compiled [`Config`].
+    pub fn build(self) -> Result<Config<N>, ConfigError> {
         validate_length_range(self.min_length, self.max_length)?;
+
+        let capacity_max = calc_str_len(N);
+        let effective_max = self
+            .max_length
+            .map(|max| core::cmp::min(max, capacity_max))
+            .unwrap_or(capacity_max);
+
+        if let Some(min) = self.min_length {
+            if min > effective_max {
+                return Err(ConfigError::InvalidCompiledLengthRange {
+                    min,
+                    max: effective_max,
+                });
+            }
+        }
+
+        let delimiter_rules = self.delimiter.unwrap_or_default();
+        let (allow_hyphen, allow_underscore) = match self.composition {
+            Composition::Alphanumeric => (false, false),
+            Composition::AlphanumericHyphen => (true, false),
+            Composition::AlphanumericUnderscore => (false, true),
+            Composition::AlphanumericHyphenUnderscore => (true, true),
+        };
 
         Ok(Config {
             min_length: self.min_length,
-            max_length: self.max_length,
+            effective_max,
             composition: self.composition,
-            delimiter: self.delimiter,
+            delimiter_rules,
+            allow_hyphen,
+            allow_underscore,
         })
     }
 }
@@ -332,22 +368,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_config_new() {
-        let config = Config::new(Some(5), Some(10), Composition::Alphanumeric, None).unwrap();
-
-        assert_eq!(config.min_length(), Some(5));
-        assert_eq!(config.max_length(), Some(10));
-        assert_eq!(config.composition(), Composition::Alphanumeric);
-        assert_eq!(config.delimiter(), None);
-    }
-
-    #[test]
     fn test_config_builder_new() {
-        let builder = ConfigBuilder::new();
+        let builder = ConfigBuilder::<16>::new();
         assert_eq!(builder.min_length, Some(3));
         assert_eq!(builder.max_length, None);
         assert_eq!(builder.composition, Composition::AlphanumericHyphen);
         assert_eq!(builder.delimiter, None);
+    }
+
+    #[test]
+    fn test_config_builder_custom_values() {
+        let delimiter = DelimiterRulesBuilder::new()
+            .allow_leading_trailing_underscores(true)
+            .allow_consecutive_hyphens(true)
+            .build();
+
+        let config = Config::<16>::builder()
+            .min_length(Some(4))
+            .max_length(Some(12))
+            .composition(Composition::AlphanumericHyphenUnderscore)
+            .delimiter(Some(delimiter))
+            .build()
+            .unwrap();
+
+        assert_eq!(config.min_length(), Some(4));
+        assert_eq!(config.effective_max(), 12);
+        assert_eq!(
+            config.composition(),
+            Composition::AlphanumericHyphenUnderscore
+        );
+        assert!(config.delimiter_rules().allow_consecutive_hyphens());
+        assert!(config
+            .delimiter_rules()
+            .allow_leading_trailing_underscores());
+        assert!(config.allow_hyphen());
+        assert!(config.allow_underscore());
+    }
+
+    #[test]
+    fn test_config_minimal() {
+        let config = Config::<16>::minimal();
+        assert_eq!(config.min_length(), None);
+        assert_eq!(
+            config.composition(),
+            Composition::AlphanumericHyphenUnderscore
+        );
+        assert!(config.delimiter_rules().allow_adjacent_hyphen_underscore());
     }
 
     #[test]
@@ -368,40 +434,6 @@ mod tests {
         assert_eq!(builder.allow_consecutive_hyphens, None);
         assert_eq!(builder.allow_consecutive_underscores, None);
         assert_eq!(builder.allow_adjacent_hyphen_underscore, None);
-    }
-
-    #[test]
-    fn test_validation_config_builder_custom_values() {
-        let delimiter = DelimiterRulesBuilder::new()
-            .allow_leading_trailing_underscores(true)
-            .allow_consecutive_hyphens(true)
-            .build();
-
-        let vc = Config::builder()
-            .min_length(Some(4))
-            .max_length(Some(12))
-            .composition(Composition::AlphanumericHyphenUnderscore)
-            .delimiter(Some(delimiter))
-            .build()
-            .unwrap();
-
-        assert_eq!(vc.min_length(), Some(4));
-        assert_eq!(vc.max_length(), Some(12));
-        assert_eq!(vc.composition(), Composition::AlphanumericHyphenUnderscore);
-        assert!(vc.delimiter().unwrap().allow_consecutive_hyphens());
-        assert!(vc.delimiter().unwrap().allow_leading_trailing_underscores());
-    }
-
-    #[test]
-    fn test_config_minimal() {
-        let config = Config::minimal();
-        assert_eq!(config.min_length(), None);
-        assert_eq!(config.max_length(), None);
-        assert_eq!(
-            config.composition(),
-            Composition::AlphanumericHyphenUnderscore
-        );
-        assert!(config.delimiter().is_some());
     }
 
     #[test]
@@ -431,7 +463,7 @@ mod tests {
 
     #[test]
     fn test_invalid_length_config_builder() {
-        let err = Config::builder()
+        let err = Config::<16>::builder()
             .min_length(Some(10))
             .max_length(Some(5))
             .build()
@@ -440,8 +472,14 @@ mod tests {
     }
 
     #[test]
-    fn test_invalid_length_config_new() {
-        let err = Config::new(Some(10), Some(5), Composition::Alphanumeric, None).unwrap_err();
-        assert_eq!(err, ConfigError::InvalidLengthRange { min: 10, max: 5 });
+    fn test_invalid_compiled_length() {
+        let err = Config::<8>::builder()
+            .min_length(Some(20))
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            err,
+            ConfigError::InvalidCompiledLengthRange { min: 20, max: 10 }
+        );
     }
 }
