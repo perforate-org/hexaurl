@@ -30,6 +30,45 @@ const fn calc_str_len(n: usize) -> usize {
     n * 4 / 3
 }
 
+#[inline(always)]
+fn has_consecutive_delimiter(bytes: &[u8], needle: u8) -> bool {
+    const BYTE_HIGH_BITS: u64 = 0x8080808080808080;
+    const BYTE_ONES: u64 = 0x0101010101010101;
+    const FIRST_BYTE_HIGH_BIT: u64 = 0x0000000000000080;
+    const LAST_BYTE_HIGH_BIT: u64 = 0x8000000000000000;
+
+    let mut prev_last_match = false;
+    let repeated = u64::from(needle) * BYTE_ONES;
+
+    let mut chunks = bytes.chunks_exact(8);
+    for chunk in chunks.by_ref() {
+        let value = u64::from_le_bytes(chunk.try_into().unwrap());
+        let x = value ^ repeated;
+        let match_mask = (x.wrapping_sub(BYTE_ONES)) & !x & BYTE_HIGH_BITS;
+
+        if (match_mask & (match_mask >> 8)) != 0 {
+            return true;
+        }
+        if prev_last_match && (match_mask & FIRST_BYTE_HIGH_BIT) != 0 {
+            return true;
+        }
+        prev_last_match = (match_mask & LAST_BYTE_HIGH_BIT) != 0;
+    }
+
+    for &b in chunks.remainder() {
+        if b == needle {
+            if prev_last_match {
+                return true;
+            }
+            prev_last_match = true;
+        } else {
+            prev_last_match = false;
+        }
+    }
+
+    false
+}
+
 /// Validates a HexaURL string in a single pass with default configuration.
 /// Returns Ok(()) if the string meets all criteria, otherwise returns an Error.
 #[inline]
@@ -163,32 +202,17 @@ pub fn validate_with_compiled_config<const N: usize>(
             if has_hyphen {
                 // Check consecutive hyphens.
                 let rules = compiled.delimiter_rules();
-                let mut last_delim: Option<u8> = None;
-                for &b in bytes {
-                    if b == b'-' {
-                        if last_delim == Some(b'-') && !rules.allow_consecutive_hyphens() {
-                            return Err(Error::ConsecutiveHyphens);
-                        }
-                        last_delim = Some(b'-');
-                    } else {
-                        last_delim = None;
-                    }
+                if !rules.allow_consecutive_hyphens() && has_consecutive_delimiter(bytes, b'-') {
+                    return Err(Error::ConsecutiveHyphens);
                 }
             }
         }
         Composition::AlphanumericUnderscore => {
             if has_underscore {
                 let rules = compiled.delimiter_rules();
-                let mut last_delim: Option<u8> = None;
-                for &b in bytes {
-                    if b == b'_' {
-                        if last_delim == Some(b'_') && !rules.allow_consecutive_underscores() {
-                            return Err(Error::ConsecutiveUnderscores);
-                        }
-                        last_delim = Some(b'_');
-                    } else {
-                        last_delim = None;
-                    }
+                if !rules.allow_consecutive_underscores() && has_consecutive_delimiter(bytes, b'_')
+                {
+                    return Err(Error::ConsecutiveUnderscores);
                 }
             }
         }
